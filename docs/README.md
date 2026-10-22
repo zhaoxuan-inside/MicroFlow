@@ -5,6 +5,7 @@
 - [平台标准设计方案 v1.3](design/platform-standard-design.md)：平台协议、持久化提供者接口、配置化算子执行属性及发布恢复要求。
 - [框架内部功能技术选型 v1.2](design/technical-selection.md)：22 项内部算法、数据结构与接口决策，具体介质由上层绑定，不进入核心依赖。
 - [算法与一致性设计 v1.2](design/algorithms-and-consistency.md)：DAG、动态依赖、介质无关提交、配置解析、幂等、缓存及发布算法。
+- [前端框架完整设计方案 v1.0](design/frontend-framework-design.md)：面向 Vibe Coding 的元组件、组件、图层、页面、产品模型，以及编译器、运行时、Renderer 和发布边界。
 
 需求与行为以平台标准设计为准，技术实现遵守配套选型和一致性设计。文档中的目标能力与实现、兼容性测试、性能及高可用验收分别管理。
 
