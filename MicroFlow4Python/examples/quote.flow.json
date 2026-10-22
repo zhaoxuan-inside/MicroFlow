@@ -1,0 +1,16 @@
+{
+  "modules": ["quote.py"],
+  "flows": [{
+    "id": "quote",
+    "input_schema": "quote.input@1",
+    "output_schema": "quote.output@1",
+    "options": {"scene": "order.quote", "version": "quote@1"},
+    "nodes": {
+      "calculate": {
+        "operator": "quote.calculate@1",
+        "inputs": {"items": {"from": "flow.input.items", "required": true}}
+      }
+    },
+    "outputs": {"total": {"from": "nodes.calculate.output.data.total", "required": true}}
+  }]
+}
