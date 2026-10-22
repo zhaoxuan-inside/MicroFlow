@@ -7,6 +7,8 @@
 - [算法与一致性设计 v1.2](design/algorithms-and-consistency.md)：DAG、动态依赖、介质无关提交、配置解析、幂等、缓存及发布算法。
 - [前端框架完整设计方案 v1.0](design/frontend-framework-design.md)：面向 Vibe Coding 的元组件、组件、图层、页面、产品模型，以及编译器、运行时、Renderer 和发布边界。
 
+对应的 Flutter 首版实现位于 [MicroFlow4Flutter](../MicroFlow4Flutter/README.md)，实现状态以子项目 README、测试和后续实施记录为准。
+
 需求与行为以平台标准设计为准，技术实现遵守配套选型和一致性设计。文档中的目标能力与实现、兼容性测试、性能及高可用验收分别管理。
 
 本文档目录是项目内的设计维护入口；先前会话输出保留为历史参考，不与仓库内文档并行维护为两份权威版本。

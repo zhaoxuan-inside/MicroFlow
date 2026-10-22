@@ -1,4 +1,4 @@
-/// MicroFlow Flutter runtime and framework contracts.
+// MicroFlow Flutter runtime and framework contracts.
 
 export 'src/debug/debug.dart';
 export 'src/model/project_model.dart';

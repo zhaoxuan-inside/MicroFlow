@@ -6,6 +6,8 @@ MicroFlow 是一个以 Python 标准库为核心的业务算子与流程执行�
 
 设计基线和逐项证据见 [项目文档](docs/README.md) 与 [实施计划](docs/implementation-plan.md)。Python 包的详细 API 说明见 [MicroFlow4Python/README.md](MicroFlow4Python/README.md)。
 
+Flutter 前端框架位于 [MicroFlow4Flutter/README.md](MicroFlow4Flutter/README.md)，当前提供项目模型、运行时导航、Flutter Renderer 入口、Debug 快照、Telemetry 收集和外部实验 Provider 契约。
+
 ## 快速开始
 
 要求 Python 3.12 或更高版本。仓库内的主要验证使用 CPython 3.14.5rc1，包括 free-threading 构建。
@@ -84,3 +86,11 @@ py -3.14t -m unittest discover -s tests -q
 - [技术选型](docs/design/technical-selection.md)
 - [算法与一致性设计](docs/design/algorithms-and-consistency.md)
 - [实施计划与验证记录](docs/implementation-plan.md)
+
+## Flutter 前端验证
+
+```powershell
+cd MicroFlow4Flutter
+flutter analyze
+flutter test
+```
