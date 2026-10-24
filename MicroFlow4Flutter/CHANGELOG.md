@@ -1,4 +1,20 @@
+## 0.2.0
+
+模块化重构：将框架实现拆分为 4 个可独立升级的子包，总包仅做装配：
+
+* packages/microflow_model —— 项目模型/契约/诊断注册表/i18n/Token；
+* packages/microflow_runtime —— 统一资源注册/静态校验/解释运行时/错误边界，
+  新增 MFEmissionSink 稳定发射接口（运行时不依赖观测面实现）；
+* packages/microflow_observability —— 遥测信封与有界队列（实现了
+  MFEmissionSink）、标准事件族、实验冻结、Debug 会话；
+* packages/microflow_renderer_flutter —— Tier A 渲染、解释器、MicroFlowApp；
+* 总包 MicroFlowFramework.create：一次装配 + 静态校验门禁。
+* 依赖单向收敛：model ← runtime ← {observability, renderer}。
+
 ## 0.1.0
+
+* 首次实现框架核心（Level 0 + Level 1 解释模式 + Level 2 部分契约面），
+  §44.2 备忘示例与基线测试。
 
 首次按 `docs/design/frontend-framework-design.md` v1.12 实现框架核心：
 

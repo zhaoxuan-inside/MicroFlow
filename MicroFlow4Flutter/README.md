@@ -1,90 +1,82 @@
 # MicroFlow4Flutter
 
-MicroFlow Frontend 的 Flutter Renderer 与运行时（对齐 `docs/design/frontend-framework-design.md` v1.12）。
+MicroFlow Frontend 的 Flutter 实现（对齐 `docs/design/frontend-framework-design.md` v1.12）。
+
+## 模块结构（可独立升级）
 
 ```text
-Project Model → Runtime → Flutter Renderer / Host
-                       ↓
-             Telemetry / Experiment / Debug（契约面）
+microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.create）
+└── packages/
+    ├── microflow_model            模型/契约/诊断/i18n/Token   （§4-§11、§36.2、§39、§41、§42）
+    │     ↓
+    ├── microflow_runtime          注册/静态校验/解释运行时/错误边界（§13.2、§23、§10、§18.1）
+    │     ↓                    ↑
+    ├── microflow_renderer_flutter     Flutter Tier A 渲染 + MicroFlowApp（§12、§13.3、§38）
+    └── microflow_observability        遥测信封/有界队列/实验冻结/Debug 会话（§24、§29、§31）
 ```
+
+模块化原则（两条硬约束）：
+
+1. **依赖单向收敛**：model / runtime 是零外部依赖的稳定核心；observability
+   与 renderer 只依赖 runtime 的公共 API。运行时通过 `MFEmissionSink`
+   接口向观测面发射拦截事件（§24.7 运行时是唯一发射点），采集管道可独立
+   替换与升级，运行时不感知其实现。
+2. **降级单配置总量**：每个模块自带 pubspec（版本、依赖、flutter_lints）、
+   独立 analyze；业务层按需依赖，不必将全部能力引入单一配置。遥测接收端、
+   实验平台、Debug 远程诊断均由业务层按 §27 责任矩阵承载。
+
+## 各模块职责与导出面
+
+| 模块 | 版本 | 公共 API（节选） |
+|---|---|---|
+| microflow_model | 0.1.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract/InfoContract/LayoutCapability`、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFDiag/MFCodes/mfDiagnosticRegistry` |
+| microflow_runtime | 0.1.0 | `MFRegistry/MFResourceEntry`、`MFRuntime/MFPageInstance/MFFrozenContext/MFActionResult`、`MFValidator/MFValidationResult`、`MFStateStore`、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
+| microflow_observability | 0.1.0 | `MFEventEnvelope/MFTelemetryQueue/MFTelemetrySink/MFInMemorySink`、`MFStandardEvents`、`MFExperimentState/MFExperimentAssignment`、`MFDebugSession/MFDebugSnapshot` |
+| microflow_renderer_flutter | 0.1.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`、`resolveTokenColor` |
+| microflow4_flutter（总包） | 0.2.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配） |
 
 ## 已实现能力（按 §38.2 分级如实声明）
 
-### Level 0 模型与验证核心（已实现）
+- **Level 0 已实现**：项目模型 / 契约 / 静态校验器 / 诊断注册表 / i18n / Token；
+- **Level 1 已实现（解释模式）**：页面实例 / 导航 / 状态层 / 绑定映射 /
+  并发策略 / guard / 超时 unknown / 错误边界；Tier A 元组件渲染；
+- **Level 2 协议面已定义并部分实现**：遥测信封 Schema 校验与有界队列、
+  标准运营事件族零埋点（`ops.page.viewed/left`、`ops.feature.used`）、
+  实验分配校验冻结停用、Debug 权限门与快照屏蔽；接收端服务、实验平台、
+  远程诊断仍由业务层/承载方实现（§27）。
 
-- 项目模型（§4）：manifest、资源稳定 id、依赖与版本声明；
-- 组件 / 元组件契约（§5、§6、§23.2）：props、slots、events、states、布局能力、
-  可访问性要求、容器信息面（provides / consumes，§2.8）；
-- 声明式节点树（§6）与 Tier A 元组件集（§38.1）；
-- 绑定映射资源（§39）+ 结构化表达子集（§37.2）：ref、比较、逻辑组合；
-- 导航模型（§9）：路由、edges、可达性与入口检查；
-- i18n 资源模型（§42）：locale 注册表、回退链、缺失翻译诊断、t/text 互斥；
-- 静态校验器（§18.1 子集）：未注册引用、绑定目标与事件声明、并发策略声明
-  （基线 26）、导航可达性/入口、幽灵依赖（基线 16）、i18n 通道互斥（基线 30 部分）；
-- 统一诊断码命名空间与注册表（§41）：`mf.<area>.<name>`；
-- Token 最小集（§36.2）：颜色 Token 解析进 Flutter 主题与渲染色。
-
-### Level 1 解释运行时（已实现，§13.2 §13.3 解释模式）
-
-- 页面实例生命周期（§2.6 实例语义、§8）：参数、页面状态、实例身份
-  （`page_instance_id` / `component_instance_id`，§12.1）；
-- 双实例隔离：同一组件定义多实例状态互不影响（§2.6，基线 1）；
-- 导航执行：push / replace / back，页面状态随实例销毁（§11）；
-- 动作执行（§10 六类的本地子集）：state / navigation / event / ui /
-  function / adapter，动作链 `as`/`prev` 结果传递（§39.1）；
-- 并发策略执行（§39.1，基线 26）：cancel-previous / supersede / queue / reject-new；
-  未声明策略的绑定拒绝重复触发；
-- Guard：假值不执行且不是错误（§39，基线 2）；
-- 超时进入 `unknown`，不当作"操作未执行"，未知结果不自动重试（§22.1，基线 3、27）；
-- 错误边界（§22.1）：捕获进入声明边界并产生诊断；
-- Data Contract 运行期子集（§40.3）：输出 Schema 校验失败是类型化错误
-  （基线 4）；缓存/陈旧策略字段已建模、执行面待接入。
-
-### Level 2 契约面（协议已定义，实现承载见下）
-
-- Telemetry（§24、§30.1）：事件四分类、信封 Schema 与校验、身份字段分离与
-  凭据拒绝、有界队列/丢弃计数/批量/失败反压；标准运营事件族
-  （`ops.page.viewed` / `ops.page.left` / `ops.feature.used`）由运行时拦截
-  边界**零埋点**产生（基线 29），业务代码手工上报被拒绝；接收端由业务层
-  按 Ingest 契约承载；
-- Experiment（§24.4、§31）：外部 Provider 提供分配结果，框架校验、冻结到
-  实例、停用不改写历史归属（§24.5）；实验曝光事件就绪但**不**内置曝光平台；
-- Debug（§29）：本地/预览/生产受控三级、按 grant 授权、快照屏蔽与过期；
-- Security（§32 子集）：凭据不入模型/事件/快照，身份哈希化。
-
-## 尚未实现（Sections 状态对照）
-
-- 编译模式（§13.3 编译侧目标产物）；本包当前仅解释模式，按规范单验
-  解释模式自身的行为一致性；
-- 完整样式片 / 主题覆盖链 / 条件样式（§36.3–§36.6）：Token 只覆盖颜色语义；
-- Tier B 元组件（Grid 已含，Tabs/Drawer/Table 待实现）；
-- 恢复迁移器、Business Fact 可靠通道、Trusted Types / CSP 等平台级安全面；
-- 增量编译与性能预算门禁（§22.2）：指标已建模（Performance Contract
-  Schema），未接真实度量管线。
+尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、完整样式片/主题
+覆盖链（§36.3–§36.6）、Tier B 全集、Business Fact 可靠通道、增量编译与
+性能预算度量管线（§22.2）。
 
 ## 使用
 
 ```dart
-final registry = buildTierAExampleRegistry();
-final project = MFProject(
-  manifest: const MFManifest(projectId: 'demo', entryPage: 'home'),
-  pages: [MFPage(id: 'home', route: '/home', tree: MFNode(...), stateMembers: ['count'])],
-  bindingMaps: {'main': MFBindingMap(...)},
+import 'package:microflow4_flutter/microflow4_flutter.dart';
+
+final fw = MicroFlowFramework.create(
+  project: project,       // MFProject（§4）
+  registry: registry,     // MFRegistry（§23 统一资源注册）
+  releaseId: 'r1',
+  telemetrySink: sink,    // 可选；缺省内存 sink
 );
-runApp(MicroFlowApp(project: project, registry: registry));
+runApp(MicroFlowApp(project: project, registry: registry, runtime: fw.runtime));
 ```
 
-完整可运行示例见 [example/lib/main.dart](../example/)（§44.2 "备忘（Notes）"）。
+完整可运行示例见 [example/lib/main.dart](example/)（§44.2 “备忘（Notes）”）。
 
 ## 检查
 
+每个模块独立执行（总包与 example 同理）：
+
 ```text
-flutter analyze                     # 0 issues
-flutter test                        # 一致性基线测试
+cd packages/microflow_model && flutter analyze      # 0 issues
 ```
 
-进入 `example/` 可运行最小产品示例：
+总包：
 
 ```text
+flutter analyze   # 0 issues
+flutter test      # 一致性基线测试（§44.3 可单测条目）
 cd example && flutter run -d chrome
 ```
