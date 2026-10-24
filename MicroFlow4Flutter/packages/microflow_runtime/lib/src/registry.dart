@@ -111,12 +111,13 @@ class MFRegistry {
 
   List<MFResourceEntry> all() => List.unmodifiable(_resources.values);
 
-  /// Deprecation warnings collected by the validator (§23.6).
+  /// Deprecation warnings collected by the validator (§23.6). The code is
+  /// registered in the unified diagnostic registry (§41.3).
   List<MFDiag> deprecationWarnings() => [
         for (final e in _resources.values)
           if (e.deprecation != null)
             MFDiag(
-              'mf.reg.deprecated',
+              MFCodes.regDeprecated,
               '资源 ${e.id} 已废弃：应使用 ${e.deprecation}',
               severity: Severity.warning,
             ),

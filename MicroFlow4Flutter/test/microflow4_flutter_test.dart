@@ -1,8 +1,36 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:microflow4_flutter/microflow4_flutter.dart';
 
 /// MicroFlow4Flutter consistency tests, anchored on the frontend-framework-
 /// design §44.3 baseline (只测静态可决定与运行时可判定的子集).
+
+/// 收集总包与子包下的 Dart 文件。
+Set<File> _dartFiles(List<String> roots, {String suffix = '.dart', bool underLib = false}) {
+  return {
+    for (final rel in roots)
+      if (Directory(rel).existsSync())
+        ...Directory(rel)
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((f) => f.path.endsWith(suffix) && (!underLib || f.path.startsWith('lib/') || f.path.contains('/lib/'))),
+  };
+}
+
+/// 从当前目录向上回溯定位仓库内文件（baselines.json 位于 docs/design/）。
+File? _locateRepoFile(String rel) {
+  var dir = Directory.current.path;
+  for (var i = 0; i < 4; i++) {
+    final candidate = File('$dir/$rel');
+    if (candidate.existsSync()) return candidate;
+    final parent = File('$dir/..').resolveSymbolicLinksSync();
+    if (parent == dir) break;
+    dir = parent;
+  }
+  return null;
+}
 
 MFRegistry demoRegistry() {
   final r = MFRegistry();
@@ -351,5 +379,52 @@ void main() {
       for (final e in demoRegistry().all()) e.id: e.contract,
     };
     expect(tierAContractDiagnostics(contracts), isEmpty);
+  });
+
+  test('基线清单机器可读，测试基线引用合法（P1 守卫）', () {
+    final file = _locateRepoFile('docs/design/baselines.json');
+    expect(file, isNotNull, reason: 'docs/design/baselines.json 必须存在于仓库（§44.3 机器可读投影）');
+    final doc = jsonDecode(file!.readAsStringSync()) as Map<String, Object?>;
+    final baselines = (doc['baselines'] as List).cast<Map<String, Object?>>();
+    expect(baselines, hasLength(32));
+    for (var i = 0; i < baselines.length; i++) {
+      expect(baselines[i]['id'], i + 1, reason: '基线 id 必须 1..32 连续');
+      expect((baselines[i]['title'] as String).isNotEmpty, isTrue);
+      expect((baselines[i]['refs'] as String).isNotEmpty, isTrue);
+    }
+    // 测试名称中「基线 N」引用的条目必须存在于清单（防漂移）。
+    final marker = RegExp(r'基线\s*(\d+(?:\s*[、,，]\s*\d+)*)');
+    final testName = RegExp(r'''(?:test|testWidgets)\(\s*(['"])(.+?)\1''');
+    final ids = {for (final b in baselines) b['id'] as int};
+    final files = _dartFiles(const ['test', 'packages'], suffix: '_test.dart');
+    expect(files, isNotEmpty);
+    final refs = <int>{};
+    for (final f in files) {
+      for (final m in testName.allMatches(f.readAsStringSync())) {
+        for (final bm in marker.allMatches(m.group(2)!)) {
+          for (final s in bm.group(1)!.split(RegExp(r'[、,，]'))) {
+            final id = int.parse(s.trim());
+            expect(ids.contains(id), isTrue, reason: '${f.path} 引用了不存在的基线 $id');
+            refs.add(id);
+          }
+        }
+      }
+    }
+    expect(refs, isNotEmpty);
+  });
+
+  test('诊断码单一来源：lib 内全部 mf.* 字面量已登记（§41.3，P5 守卫）', () {
+    final literal = RegExp(r"'mf\.[a-z][a-z0-9-]*\.[a-z0-9-]+'");
+    final files = _dartFiles(const ['lib', 'packages'], underLib: true);
+    expect(files, isNotEmpty);
+    final registered = mfDiagnosticRegistry.keys.toSet();
+    final violations = <String>[];
+    for (final f in files) {
+      for (final m in literal.allMatches(f.readAsStringSync())) {
+        final code = m.group(0)!.substring(1, m.group(0)!.length - 1);
+        if (!registered.contains(code)) violations.add('${f.path}: $code');
+      }
+    }
+    expect(violations, isEmpty, reason: '发射未登记诊断码是实现缺陷（§41.3）');
   });
 }

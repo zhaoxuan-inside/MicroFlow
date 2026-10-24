@@ -136,19 +136,19 @@ class MFEventEnvelope {
   /// diagnostics.
   MFDiag? validate() {
     if (!allowedEnvironments.contains(environment)) {
-      return const MFDiag('mf.tele.schema-invalid', 'environment 不在允许枚举内');
+      return const MFDiag(MFCodes.teleSchemaInvalid, 'environment 不在允许枚举内');
     }
     if (!allowedPrivacyClasses.contains(privacyClass)) {
-      return const MFDiag('mf.tele.schema-invalid', 'privacy_class 不在允许枚举内');
+      return const MFDiag(MFCodes.teleSchemaInvalid, 'privacy_class 不在允许枚举内');
     }
     if (traceId.isEmpty || sessionId.isEmpty || pageInstanceId.isEmpty) {
-      return const MFDiag('mf.tele.schema-invalid', '缺失必需身份/追踪字段');
+      return const MFDiag(MFCodes.teleSchemaInvalid, '缺失必需身份/追踪字段');
     }
     for (final k in identity.keys) {
       // Identity separation (§32): keys must not carry credential names,
       // and values are opaque/hashed references (§4.4).
       if (_looksCredential(k)) {
-        return const MFDiag('mf.tele.schema-invalid', 'identity 中包含疑似凭据字段');
+        return const MFDiag(MFCodes.teleSchemaInvalid, 'identity 中包含疑似凭据字段');
       }
     }
     return null;

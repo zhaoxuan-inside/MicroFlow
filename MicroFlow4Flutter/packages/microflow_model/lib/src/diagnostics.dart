@@ -30,6 +30,7 @@ abstract final class MFCodes {
   static const regUnregisteredRef = 'mf.reg.unregistered-ref';
   static const regContractMismatch = 'mf.reg.contract-mismatch';
   static const regUnregisteredImpl = 'mf.reg.unregistered-impl';
+  static const regDeprecated = 'mf.reg.deprecated';
 
   // Reference / binding (§4.3, §39).
   static const refDangling = 'mf.ref.dangling';
@@ -63,6 +64,7 @@ abstract final class MFCodes {
   // Telemetry (§24).
   static const teleManualStandardEvent = 'mf.tele.manual-standard-event';
   static const teleQueueOverflow = 'mf.tele.queue-overflow';
+  static const teleSchemaInvalid = 'mf.tele.schema-invalid';
 
   // Capability (§17.1, §22.1).
   static const capUnavailable = 'mf.cap.unavailable';
@@ -81,6 +83,7 @@ Map<String, MFDiag> _buildRegistry() {
     const MFDiag(MFCodes.regUnregisteredRef, '引用了未注册资源（§2.7）'),
     const MFDiag(MFCodes.regContractMismatch, '实现与注册契约不一致（§23.3）'),
     const MFDiag(MFCodes.regUnregisteredImpl, '实现未经声明入口到达（§23.3）'),
+    const MFDiag(MFCodes.regDeprecated, '资源已废弃，应使用声明的替代资源（§23.6）', severity: Severity.warning),
     const MFDiag(MFCodes.refDangling, '悬空引用（§4.3）'),
     const MFDiag(MFCodes.bindingEventUnknown, '绑定事件目标不存在或契约未声明'),
     const MFDiag(MFCodes.bindingNoConcurrency, '绑定未声明并发策略，拒绝重复触发（§39.1、基线 26）'),
@@ -100,6 +103,7 @@ Map<String, MFDiag> _buildRegistry() {
     const MFDiag(MFCodes.i18nChannelConflict, '同一内容位同时声明 i18n 与内容资产'),
     const MFDiag(MFCodes.teleManualStandardEvent, '业务代码手工上报标准事件族'),
     const MFDiag(MFCodes.teleQueueOverflow, '采集队列满载丢弃'),
+    const MFDiag(MFCodes.teleSchemaInvalid, '事件信封 Schema 校验失败（§24.2）'),
     const MFDiag(MFCodes.capUnavailable, '宿主能力不可用，按声明降级'),
     const MFDiag(MFCodes.debugUnauthorized, 'Debug 会话未授予对应权限'),
     const MFDiag(MFCodes.expAssignmentIncompatible, '实验分配与平台/版本/有效期不兼容'),
