@@ -6,6 +6,7 @@
 - [框架内部功能技术选型 v1.2](design/technical-selection.md)：22 项内部算法、数据结构与接口决策，具体介质由上层绑定，不进入核心依赖。
 - [算法与一致性设计 v1.2](design/algorithms-and-consistency.md)：DAG、动态依赖、介质无关提交、配置解析、幂等、缓存及发布算法。
 - [前端框架完整设计方案 v1.12](design/frontend-framework-design.md)：面向 Vibe Coding 的元组件、组件、图层、页面、产品模型，样式与主题模型、交互与绑定语法、绑定映射，以及编译器、运行时、Renderer 和发布边界；代码、数据、配置三平面分离（§2.9）与文案通道判定（§42.7）；框架不提供可视化编辑器，向上层工具提供编排接入协议。
+- [外部功能接入规范 v1.0](design/external-capability-integration-spec.md)：宿主实现（统一资源注册）、上层工具（结构化命令与项目模型读写）、平台服务（遥测/实验/Debug 契约）三类接入方的通道、交付物与验收清单；对前端设计方案接入面的操作化收敛，不引入新语义。
 
 对应的 Flutter 首版实现位于 [MicroFlow4Flutter](../MicroFlow4Flutter/README.md)，实现状态以子项目 README、测试和后续实施记录为准。
 
