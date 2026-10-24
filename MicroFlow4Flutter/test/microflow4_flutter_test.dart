@@ -374,6 +374,171 @@ void main() {
     expect(() => requireSnapshot(session: noGrant, context: {}), throwsA(isA<MFDebugUnauthorized>()));
   });
 
+  test('输出 Schema 不匹配产生类型化错误，不静默截断（基线 4）', () async {
+    final registry = demoRegistry();
+    registry.register(
+      'adapter',
+      'adapter.notes-list',
+      ComponentContract(props: {'output': const TList(item: TString())}),
+      MFAdapterImpl((args) async => 42), // 与 output Schema 不符
+    );
+    final project = MFProject(
+      manifest: const MFManifest(projectId: 'p', entryPage: 'page'),
+      pages: [MFPage(id: 'page', route: '/p', tree: MFNode(id: 'root', type: 'Stack', children: const [MFNode(id: 'btn', type: 'Button', props: {'label': 'load'})]), stateMembers: const ['rows'])],
+      bindingMaps: {
+        'm': MFBindingMap(
+          id: 'm',
+          bindings: [
+            MFBinding(
+              id: 'load',
+              on: 'btn.press',
+              actions: [MFAdapterAction(kind: 'adapter', call: 'adapter.notes-list', as: 'rows')],
+              policy: MFPolicy.rejectNew,
+            ),
+          ],
+        ),
+      },
+    );
+    final fw = MicroFlowFramework.create(
+      project: project,
+      registry: registry,
+      environment: 'dev',
+      releaseId: 'r',
+    );
+    await fw.runtime.start();
+    final result = await fw.runtime.execute('load');
+    expect(result.results['last'], isA<MFUnknownResult>(), reason: '不符 Schema 的输出不得进入状态（§40.3）');
+    expect(fw.runtime.diagnostics.where((d) => d.code == 'mf.data.output-invalid'), isNotEmpty);
+  });
+
+  test('manifest 类型方言版本不受支持时构建失败（基线 14）', () {
+    final project = demoProject();
+    final bad = MFProject(
+      manifest: const MFManifest(
+        projectId: 'p',
+        entryPage: 'notes-page',
+        typeDialectVersion: '9.9',
+      ),
+      pages: project.pages,
+      i18n: project.i18n,
+    );
+    final v = MFValidator(project: bad, registry: demoRegistry()).validate();
+    expect(v.diagnostics.any((d) => d.code == 'mf.schema.dialect-unsupported'), isTrue);
+    expect(v.ok, isFalse, reason: '方言版本不满足时构建失败（§4.6）');
+  });
+
+  test('容器信息契约：consumes 解析到上游 provides；provides 变更命中影响分析（基线 16 部分）', () {
+    final base = MFProject(
+      manifest: const MFManifest(projectId: 'p', entryPage: 'page'),
+      pages: [
+        MFPage(
+          id: 'page',
+          route: '/p',
+          tree: const MFNode(id: 'root', type: 'Stack', children: [MFNode(id: 'badge', type: 'user-badge')]),
+          stateMembers: const [],
+          info: const InfoContract(consumes: {'userProfile': true}),
+        ),
+      ],
+      components: {
+        'user-badge': MFComponentDefinition(
+          id: 'user-badge',
+          tree: const MFNode(id: 'b-root', type: 'Text'),
+          contract: const ComponentContract(
+            props: {},
+            info: InfoContract(provides: {'userProfile': 'string'}),
+          ),
+        ),
+      },
+    );
+    final ok = MFValidator(project: base, registry: demoRegistry()).validate();
+    expect(ok.diagnostics.any((d) => d.code == 'mf.state.ghost-dependency'), isFalse,
+        reason: 'consumes 可解析到树内上游组件的 provides（§2.8）');
+    // 影响分析：provides 的组件被哪些容器消费（§4.3 反向索引）。
+    expect(ok.index.usedBy('user-badge'), contains('page'));
+    // 移除上游组件后，required consumes 成为幽灵依赖（静态错误）。
+    final broken = MFProject(
+      manifest: base.manifest,
+      pages: [
+        MFPage(
+          id: 'page',
+          route: '/p',
+          tree: const MFNode(id: 'root', type: 'Stack'),
+          stateMembers: const [],
+          info: const InfoContract(consumes: {'userProfile': true}),
+        ),
+      ],
+      i18n: base.i18n,
+    );
+    final v = MFValidator(project: broken, registry: demoRegistry()).validate();
+    expect(v.diagnostics.any((d) => d.code == 'mf.state.ghost-dependency'), isTrue);
+  });
+
+  test('结构树属性内联可执行逻辑是静态错误（基线 31 部分）', () {
+    final project = demoProject();
+    final bad = MFProject(
+      manifest: project.manifest,
+      pages: [
+        MFPage(
+          id: 'notes-page',
+          route: '/notes',
+          tree: const MFNode(
+            id: 'evil',
+            type: 'Button',
+            props: {'label': 'ok', 'handler': {'eval': 'alert(1)'}, 'fn': {'call': 'local.steal'}},
+          ),
+        ),
+      ],
+      i18n: project.i18n,
+    );
+    final v = MFValidator(project: bad, registry: demoRegistry()).validate();
+    final inline = v.diagnostics.where((d) => d.code == 'mf.schema.inline-logic').toList();
+    expect(inline, isNotEmpty, reason: '§2.9：结构树不得内联命令式逻辑');
+    expect(inline.length, 2, reason: 'eval 与 call 两个载体各报一条');
+    // 合法的结构化引用不受影响。
+    final fine = MFProject(
+      manifest: project.manifest,
+      pages: [
+        const MFPage(
+          id: 'notes-page',
+          route: '/notes',
+          tree: MFNode(id: 't', type: 'Text', props: {'value': {'ref': 'state.count'}}),
+          stateMembers: ['count'],
+        ),
+      ],
+      i18n: project.i18n,
+    );
+    expect(MFValidator(project: fine, registry: demoRegistry()).validate().ok, isTrue);
+  });
+
+  test('受控交叉清单外的变体改写面被静态拒绝（基线 32 部分）', () {
+    final project = MFProject(
+      manifest: demoProject().manifest,
+      pages: demoProject().pages,
+      i18n: demoProject().i18n,
+      crossingList: const MFControlledCrossingList(entries: [
+        MFCrossingEntry(surface: 'page.notes-page.theme', source: 'experiment'),
+      ]),
+    );
+    final registered = MFValidator(
+      project: project,
+      registry: demoRegistry(),
+      variantRewrites: const [MFCrossingEntry(surface: 'page.notes-page.theme', source: 'experiment')],
+    ).validate();
+    expect(registered.ok, isTrue, reason: '已登记改写面通过（§2.9）');
+    final outOfScope = MFValidator(
+      project: project,
+      registry: demoRegistry(),
+      variantRewrites: const [
+        MFCrossingEntry(surface: 'page.notes-page.tree', source: 'experiment'),
+        MFCrossingEntry(surface: 'page.notes-page.theme', source: 'ops-variant'),
+        MFCrossingEntry(surface: 'page.notes-page.theme', source: 'hacker'),
+      ],
+    ).validate();
+    final violations = outOfScope.diagnostics.where((d) => d.code == 'mf.exp.variant-out-of-scope').toList();
+    expect(violations.length, 3, reason: '未登记面、来源不符与非法来源均被拒绝');
+    expect(outOfScope.ok, isFalse);
+  });
+
   test('Tier A 元组件集完整性（§38.1）', () {
     final contracts = {
       for (final e in demoRegistry().all()) e.id: e.contract,

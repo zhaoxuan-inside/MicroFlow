@@ -16,6 +16,7 @@ class MFManifest {
     this.defaultTheme,
     this.defaultLocale = 'zh-CN',
     this.supportedLocales = const ['zh-CN'],
+    this.typeDialectVersion = '1.0',
   });
 
   final String projectId;
@@ -26,6 +27,42 @@ class MFManifest {
   final String? defaultTheme;
   final String defaultLocale;
   final List<String> supportedLocales;
+
+  /// Unified type dialect version (§4.6): must resolve every Schema reference
+  /// inside the release snapshot; an unsupported dialect fails the build.
+  final String typeDialectVersion;
+}
+
+/// Dialect versions this implementation can resolve (§4.6). A manifest
+/// declaring anything else fails static validation (baseline 14).
+const List<String> mfSupportedTypeDialects = ['1.0'];
+
+/// One controlled-crossing entry (§2.9): a config-rewrite surface an
+/// experiment or ops-variant is allowed to touch.
+class MFCrossingEntry {
+  const MFCrossingEntry({required this.surface, required this.source});
+  final String surface;
+
+  /// Allowed config origin: `experiment` or `ops-variant` (§2.9).
+  final String source;
+}
+
+/// Product-level controlled crossing list (§2.9): a versioned resource.
+/// Rewrites not registered here are rejected statically
+/// (`mf.exp.variant-out-of-scope`, baseline 32).
+class MFControlledCrossingList {
+  const MFControlledCrossingList({
+    this.id = 'crossing-list',
+    this.schemaVersion = '1.0',
+    this.entries = const [],
+  });
+
+  final String id;
+  final String schemaVersion;
+  final List<MFCrossingEntry> entries;
+
+  bool allows(String surface, String source) =>
+      entries.any((e) => e.surface == surface && e.source == source);
 }
 
 /// Traceability of defined references (§4.3): component -> used_by, page ->
@@ -173,6 +210,7 @@ class MFProject {
     this.i18n = const MFI18nCatalog(),
     this.tokens = const {},
     this.navigation = const MFNavigationSpec(),
+    this.crossingList = const MFControlledCrossingList(),
   });
 
   final MFManifest manifest;
@@ -182,6 +220,9 @@ class MFProject {
   final MFI18nCatalog i18n;
   final Map<String, MFTokenSet> tokens;
   final MFNavigationSpec navigation;
+
+  /// Product-level controlled crossing list (§2.9, baseline 32).
+  final MFControlledCrossingList crossingList;
 
   MFPage? page(String id) => pages.fold(null, (r, p) => r == null && p.id == id ? p : r);
 

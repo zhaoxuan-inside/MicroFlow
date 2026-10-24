@@ -27,15 +27,22 @@ class MFValidator {
     required this.project,
     required this.registry,
     this.developingLocale,
+    this.variantRewrites = const [],
   });
 
   final MFProject project;
   final MFRegistry registry;
   final String? developingLocale;
 
+  /// Variant rewrite surfaces declared by the config plane (experiments or
+  /// ops-variants, §24.4). Each must be registered in the product-level
+  /// controlled crossing list (§2.9, baseline 32) or validation fails.
+  final List<MFCrossingEntry> variantRewrites;
+
   MFValidationResult validate() {
     final diags = <MFDiag>[];
     final result = MFValidationResult(diags);
+    _validateTypeDialect(diags);
     _validateRouting(diags);
     for (final page in project.pages) {
       _validatePage(page, diags, result);
@@ -48,7 +55,35 @@ class MFValidator {
     }
     diags.addAll(registry.deprecationWarnings());
     _validateConsumableDependencies(diags);
+    _validateCrossing(diags);
     return result;
+  }
+
+  /// Type dialect (§4.6, baseline 14): the manifest dialect must be one this
+  /// implementation can resolve; otherwise the build fails.
+  void _validateTypeDialect(List<MFDiag> diags) {
+    if (!mfSupportedTypeDialects.contains(project.manifest.typeDialectVersion)) {
+      diags.add(MFDiag(
+        MFCodes.schemaDialectUnsupported,
+        '类型方言 ${project.manifest.typeDialectVersion} 不受支持（支持：${mfSupportedTypeDialects.join(', ')}）',
+      ));
+    }
+  }
+
+  /// Controlled crossing gate (§2.9, baseline 32, static part): every
+  /// config-plane rewrite must be registered with the same surface and source.
+  void _validateCrossing(List<MFDiag> diags) {
+    for (final rewrite in variantRewrites) {
+      if (rewrite.source != 'experiment' && rewrite.source != 'ops-variant') {
+        diags.add(MFDiag(MFCodes.expVariantOutOfScope,
+            '改写面 ${rewrite.surface} 的配置来源 ${rewrite.source} 非法（experiment | ops-variant）'));
+        continue;
+      }
+      if (!project.crossingList.allows(rewrite.surface, rewrite.source)) {
+        diags.add(MFDiag(MFCodes.expVariantOutOfScope,
+            '改写面 ${rewrite.surface}（来源 ${rewrite.source}）未登记入受控交叉清单'));
+      }
+    }
   }
 
   void _validateRouting(List<MFDiag> diags) {
@@ -113,18 +148,50 @@ class MFValidator {
       if (node.t != null && node.props.containsKey('text')) {
         diags.add(MFDiag(MFCodes.i18nChannelConflict, '节点 ${node.id} 同时声明 t 与 text（§42.2）'));
       }
+      // Three-plane separation (§2.9, baseline 31, static part): the structure
+      // tree may only carry structural/style/binding resources — inline
+      // executable logic in prop values is rejected.
+      _rejectInlineLogic(node, ownerId, diags);
       result.index.record(ownerId, node.type);
     }
   }
 
+  /// Structured prop values are literals or `{"ref": ...}` (tree.dart); any
+  /// executable-logic shape (`call`/`eval`/`script`/`exec`) is a violation.
+  void _rejectInlineLogic(MFNode node, String ownerId, List<MFDiag> diags) {
+    void walk(Object? value) {
+      if (value is Map) {
+        for (final key in const ['call', 'eval', 'script', 'exec']) {
+          if (value.containsKey(key)) {
+            diags.add(MFDiag(MFCodes.schemaInlineLogic,
+                '节点 ${node.id} 的属性内联可执行逻辑（$key）（owner=$ownerId，§2.9）'));
+            return;
+          }
+        }
+        value.values.forEach(walk);
+      } else if (value is List) {
+        value.forEach(walk);
+      }
+    }
+
+    node.props.values.forEach(walk);
+  }
+
   void _validateConsumableDependencies(List<MFDiag> diags) {
-    // Provided/consumed dependency reachability across pages (baseline 16):
-    // a page that requires to consume must resolve to its own provides or
-    // registered i18n message ids; unresolvable required consumes are ghost
+    // Provided/consumed dependency reachability (baseline 16): a required
+    // consume must resolve to the page's own provides, an upstream container
+    // provides declared in the page tree's component contracts (§2.8), or a
+    // registered i18n message id; unresolvable required consumes are ghost
     // dependencies (static error).
     for (final page in project.pages) {
+      final upstreamProvides = <String>{};
+      for (final node in page.tree.flatten()) {
+        upstreamProvides.addAll(_contractOf(node.type)?.info.provides.keys ?? const <String>{});
+      }
       page.info.consumes.forEach((infoId, required) {
-        final resolvable = page.info.provides.containsKey(infoId) || project.i18n.messages.containsKey(infoId);
+        final resolvable = page.info.provides.containsKey(infoId) ||
+            upstreamProvides.contains(infoId) ||
+            project.i18n.messages.containsKey(infoId);
         if (!resolvable && required) {
           diags.add(MFDiag(MFCodes.stateGhostDependency, '页面 ${page.id} 消费的信息 $infoId 不可解析'));
         }

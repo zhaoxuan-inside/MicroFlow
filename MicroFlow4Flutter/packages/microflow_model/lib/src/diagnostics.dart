@@ -25,6 +25,8 @@ enum Stage { static_, runtime }
 /// Each code's meaning is fixed here and must not be reused (§41.3).
 abstract final class MFCodes {
   static const unknownField = 'mf.schema.unknown-field';
+  static const schemaDialectUnsupported = 'mf.schema.dialect-unsupported';
+  static const schemaInlineLogic = 'mf.schema.inline-logic';
 
   // Registration (§23).
   static const regUnregisteredRef = 'mf.reg.unregistered-ref';
@@ -72,6 +74,7 @@ abstract final class MFCodes {
   // Debug / experiment.
   static const debugUnauthorized = 'mf.debug.unauthorized';
   static const expAssignmentIncompatible = 'mf.exp.assignment-incompatible';
+  static const expVariantOutOfScope = 'mf.exp.variant-out-of-scope';
 }
 
 /// Diagnostic code registry resource (§41.2): code -> registered entry.
@@ -80,6 +83,8 @@ final Map<String, MFDiag> mfDiagnosticRegistry = _buildRegistry();
 Map<String, MFDiag> _buildRegistry() {
   final list = <MFDiag>[
     const MFDiag(MFCodes.unknownField, '资源包含未登记字段'),
+    const MFDiag(MFCodes.schemaDialectUnsupported, 'manifest 类型方言版本不受支持（§4.6、基线 14）'),
+    const MFDiag(MFCodes.schemaInlineLogic, '结构树内联可执行逻辑（§2.9 三平面分离、基线 31）'),
     const MFDiag(MFCodes.regUnregisteredRef, '引用了未注册资源（§2.7）'),
     const MFDiag(MFCodes.regContractMismatch, '实现与注册契约不一致（§23.3）'),
     const MFDiag(MFCodes.regUnregisteredImpl, '实现未经声明入口到达（§23.3）'),
@@ -107,6 +112,7 @@ Map<String, MFDiag> _buildRegistry() {
     const MFDiag(MFCodes.capUnavailable, '宿主能力不可用，按声明降级'),
     const MFDiag(MFCodes.debugUnauthorized, 'Debug 会话未授予对应权限'),
     const MFDiag(MFCodes.expAssignmentIncompatible, '实验分配与平台/版本/有效期不兼容'),
+    const MFDiag(MFCodes.expVariantOutOfScope, '变体改写面未登记入受控交叉清单（§2.9、基线 32）'),
   ];
   return {for (final d in list) d.code: d};
 }
