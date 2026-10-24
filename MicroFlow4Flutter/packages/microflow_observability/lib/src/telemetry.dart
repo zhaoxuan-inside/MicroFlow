@@ -200,6 +200,17 @@ class MFTelemetryQueue implements MFEmissionSink {
   /// pipeline (Schema, privacy, queue budget, drop accounting).
   @override
   void emit(MFRawEvent raw) {
+    // §24.7 唯一发射点纪律：标准运营事件族只允许带运行时拦截边界来源
+    // 标记（mf_source=runtime-intercept）的零埋点发射进入；业务代码对
+    // 标准事件族的手工上报被拒绝并产生 mf.tele.manual-standard-event。
+    final eventName = raw['event_name'];
+    if (eventName is String &&
+        MFStandardEvents.all.contains(eventName) &&
+        raw['mf_source'] != 'runtime-intercept') {
+      diagnostics.add(const MFDiag(MFCodes.teleManualStandardEvent, '标准事件族手工上报被拒绝（§24.7 运行时是唯一发射点）',
+          stage: Stage.runtime));
+      return;
+    }
     final event = MFEventEnvelope.fromRaw(raw);
     enqueue(event);
   }

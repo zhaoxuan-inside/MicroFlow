@@ -7,13 +7,10 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:microflow_model/microflow_model.dart';
-// ignore: unused_import
 
-/// The Tier A primitive set (§38.1) and Tier B (replaceable in clients).
-abstract final class MFTierA {
-  static const required = {'Text', 'Icon', 'Image', 'Button', 'Input', 'Select', 'Checkbox', 'Stack', 'Scroll', 'Overlay', 'List', 'Modal'};
-  static const tierB = {'Grid', 'Split', 'Anchor', 'Tabs', 'Drawer', 'Table'};
-}
+// Tier A/Tier B 元组件集（§38.1）单一来源在模型层，这里保持再导出以兼容
+// 既有 `package:microflow_renderer_flutter` 导入面。
+export 'package:microflow_model/microflow_model.dart' show MFTierA;
 
 Axis axisOf(String? direction) => direction == 'horizontal' ? Axis.horizontal : Axis.vertical;
 
@@ -47,9 +44,24 @@ class MFRenderContext {
 }
 
 class MFNodeView {
-  const MFNodeView({required this.node, required this.children});
+  const MFNodeView({
+    required this.node,
+    required this.children,
+    this.slots = const {},
+    this.childConstraints = const [],
+  });
+
   final MFNode node;
+
+  /// 默认插槽（未声明 slotOf 的子节点，§23.9）。
   final List<Widget> children;
+
+  /// 命名插槽：slotOf/命名槽 -> 子组件；未被 primitive 消费的命名插槽
+  /// 不再被静默并入默认插槽。
+  final Map<String, List<Widget>> slots;
+
+  /// 与 [children] 对齐的节点自约束（§7.2），由布局型 primitive 消费。
+  final List<MFSelfConstraint?> childConstraints;
 }
 
 typedef MFPrimitiveBuilder = Widget Function(MFRenderContext context, MFNodeView view);
@@ -60,11 +72,11 @@ class MFPrimitiveTable {
 
   final Map<String, MFPrimitiveBuilder> _builders = {
     'Text': (ctx, view) => Text(
-          (view.node.props['text'] as String?) ?? '',
-          style: view.node.props['foreground'] is String
-              ? TextStyle(color: resolveTokenColor(view.node.props['foreground']))
+          (ctx.props['text'] as String?) ?? '',
+          style: ctx.props['foreground'] is String
+              ? TextStyle(color: resolveTokenColor(ctx.props['foreground']))
               : null,
-          textAlign: switch (view.node.props['align']) {
+          textAlign: switch (ctx.props['align']) {
             'center' => TextAlign.center,
             'end' => TextAlign.end,
             _ => TextAlign.start,
@@ -72,18 +84,18 @@ class MFPrimitiveTable {
         ),
     'Icon': (ctx, view) => Icon(
           Icons.circle,
-          size: (view.node.props['size'] as num?)?.toDouble(),
-          color: view.node.props['color'] is String ? ctx.tokenColor(view.node.props['color'] as String) : null,
+          size: (ctx.props['size'] as num?)?.toDouble(),
+          color: ctx.props['color'] is String ? ctx.tokenColor(ctx.props['color'] as String) : null,
         ),
     'Image': (ctx, view) => Image.network(
-          (view.node.props['src'] as String?) ?? '',
+          (ctx.props['src'] as String?) ?? '',
           fit: BoxFit.cover,
           errorBuilder: (context, error, stack) => const SizedBox(width: 48, height: 48, child: Icon(Icons.broken_image)),
         ),
     'Button': (ctx, view) {
-      final label = (view.node.props['label'] as String?) ?? '';
+      final label = (ctx.props['label'] as String?) ?? '';
       void press() => ctx.onEvent(view.node.id, 'press');
-      return switch (view.node.props['variant']) {
+      return switch (ctx.props['variant']) {
         'secondary' => OutlinedButton(onPressed: press, child: Text(label)),
         'danger' => TextButton(
             style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
@@ -94,34 +106,51 @@ class MFPrimitiveTable {
       };
     },
     'Input': (ctx, view) => TextField(
-          enabled: view.node.props['readOnly'] != true,
-          decoration: InputDecoration(labelText: (view.node.props['placeholder'] as String?)),
+          enabled: ctx.props['readOnly'] != true,
+          decoration: InputDecoration(labelText: (ctx.props['placeholder'] as String?)),
         ),
     'Select': (ctx, view) => DropdownButtonFormField<String>(
           items: const [],
-          decoration: InputDecoration(labelText: (view.node.props['label'] as String?)),
+          decoration: InputDecoration(labelText: (ctx.props['label'] as String?)),
           onChanged: (_) => ctx.onEvent(view.node.id, 'change'),
         ),
     'Checkbox': (ctx, view) => Checkbox(
-          value: (view.node.props['value'] ?? false) == true,
+          value: (ctx.props['value'] ?? false) == true,
           tristate: false,
           onChanged: (_) => ctx.onEvent(view.node.id, 'change'),
         ),
     'Stack': (ctx, view) {
-      final direction = axisOf(view.node.props['direction'] as String?);
+      final direction = axisOf(ctx.props['direction'] as String?);
+      // 子约束映射（§7.2/§7.3）：fill 主轴 -> Expanded 分配剩余空间，
+      // fixed -> SizedBox 固定尺寸，hug/未声明 -> 按内容。
+      Widget wrap(int i, Widget child) {
+        if (i >= view.childConstraints.length) return child;
+        final c = view.childConstraints[i];
+        if (c == null) return child;
+        final main = direction == Axis.horizontal ? c.width : c.height;
+        if (isFill(main)) return Expanded(child: child);
+        if (main is num) return direction == Axis.horizontal ? SizedBox(width: main.toDouble(), child: child) : SizedBox(height: main.toDouble(), child: child);
+        final cross = direction == Axis.horizontal ? c.height : c.width;
+        if (cross is num) {
+          return direction == Axis.horizontal ? SizedBox(height: cross.toDouble(), child: child) : SizedBox(width: cross.toDouble(), child: child);
+        }
+        return child;
+      }
+
+      final children = [for (var i = 0; i < view.children.length; i++) wrap(i, view.children[i])];
       if (direction == Axis.horizontal) {
         return Row(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: mainAlignOf(view.node.props['align'] as String?),
-          crossAxisAlignment: crossAlignOf(view.node.props['crossAlign'] as String?),
-          children: view.children,
+          mainAxisAlignment: mainAlignOf(ctx.props['align'] as String?),
+          crossAxisAlignment: crossAlignOf(ctx.props['crossAlign'] as String?),
+          children: children,
         );
       }
       return Column(
-        mainAxisSize: view.node.props['expand'] == true ? MainAxisSize.max : MainAxisSize.min,
-        mainAxisAlignment: mainAlignOf(view.node.props['align'] as String?),
-        crossAxisAlignment: crossAlignOf(view.node.props['crossAlign'] as String?),
-        children: view.children,
+        mainAxisSize: ctx.props['expand'] == true ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: mainAlignOf(ctx.props['align'] as String?),
+        crossAxisAlignment: crossAlignOf(ctx.props['crossAlign'] as String?),
+        children: children,
       );
     },
     'Tabs': (ctx, view) {
@@ -138,7 +167,7 @@ class MFPrimitiveTable {
       );
     },
     'Drawer': (ctx, view) {
-      final panelWidth = (view.node.props['width'] as num?)?.toDouble() ?? 240;
+      final panelWidth = (ctx.props['width'] as num?)?.toDouble() ?? 240;
       return Container(
         width: panelWidth,
         color: ctx.tokenColor('color.bg.surface'),
@@ -146,7 +175,7 @@ class MFPrimitiveTable {
       );
     },
     'Table': (ctx, view) {
-      final columns = (view.node.props['columns'] as num?)?.toInt() ?? 1;
+      final columns = (ctx.props['columns'] as num?)?.toInt() ?? 1;
       final rows = [for (int i = 0; i < view.children.length; i += columns) view.children.sublist(i, (i + columns).clamp(0, view.children.length))];
       return Table(
         defaultColumnWidth: const FlexColumnWidth(),
@@ -157,8 +186,37 @@ class MFPrimitiveTable {
         ],
       );
     },
+    'Split': (ctx, view) {
+      // 分栏（Tier B，允许替换实现）：direction + weights 声明式分配，
+      // 未声明权重的子项均分剩余空间。
+      final horizontal = (ctx.props['direction'] as String? ?? 'horizontal') != 'vertical';
+      final weights = (ctx.props['weights'] as List?)?.cast<num>();
+      final children = [
+        for (var i = 0; i < view.children.length; i++)
+          Expanded(flex: (weights?.length ?? 0) > i ? weights![i].toInt() : 1, child: view.children[i]),
+      ];
+      return horizontal ? Row(children: children) : Column(children: children);
+    },
+    'Anchor': (ctx, view) {
+      // 锚定（§7.3 Overlay 规则：仅相对容器边）：anchor 声明映射到
+      // Alignment，容器内对齐，不引用兄弟节点。
+      final child = view.children.isEmpty ? const SizedBox.shrink() : view.children.first;
+      final anchor = ctx.props['anchor'] as String?;
+      final alignment = switch (anchor) {
+        'top' => Alignment.topCenter,
+        'top-left' || 'left-top' => Alignment.topLeft,
+        'top-right' || 'right-top' => Alignment.topRight,
+        'bottom' => Alignment.bottomCenter,
+        'bottom-left' || 'left-bottom' => Alignment.bottomLeft,
+        'bottom-right' || 'right-bottom' => Alignment.bottomRight,
+        'left' => Alignment.centerLeft,
+        'right' => Alignment.centerRight,
+        _ => Alignment.center,
+      };
+      return Align(alignment: alignment, child: child);
+    },
     'Grid': (ctx, view) {
-      final columns = (view.node.props['columns'] as num?)?.toInt() ?? 2;
+      final columns = (ctx.props['columns'] as num?)?.toInt() ?? 2;
       return Wrap(
         runSpacing: 8,
         spacing: 8,
@@ -172,8 +230,8 @@ class MFPrimitiveTable {
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: view.node.props['background'] is String
-                ? resolveTokenColor(view.node.props['background'])
+            color: ctx.props['background'] is String
+                ? resolveTokenColor(ctx.props['background'])
                 : ctx.tokenColor('color.bg.surface'),
             borderRadius: BorderRadius.circular(12),
           ),

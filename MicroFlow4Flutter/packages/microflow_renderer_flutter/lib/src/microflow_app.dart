@@ -16,6 +16,7 @@ import 'package:microflow_runtime/microflow_runtime.dart';
 
 import 'interpreter.dart';
 import 'primitives.dart';
+import 'renderer_contract.dart';
 
 /// i18n 解析（§42.5，基线 5）：message 经回退链解析展示；缺失翻译上报
 /// `mf.i18n.missing-translation` 并回退 messageId，不静默、不报错中断。
@@ -59,6 +60,10 @@ class MicroFlowApp extends StatefulWidget {
     this.themeNames = const [],
     this.onThemeSelected,
   });
+
+  /// 本渲染器的 Renderer Contract（§12.1）：一致性测试与发布清单的引用面
+  /// （§28/§33），由 MicroFlowApp 暴露为生产消费点。
+  static MFRendererContract get contract => mfFlutterRendererContract;
 
   /// 已就绪的运行时（含发射管道）；由外层完成 runtime + observability 的装配。
   final MFRuntime runtime;
@@ -167,6 +172,13 @@ class _PageHost extends StatelessWidget {
       resolveColor: (name) => _tokenValue(runtime, name),
       primitiveContracts: _primitiveContracts(runtime),
     );
+    // 样式/布局选择器上下文（§7.4/§36.4）：平台 + 断点（宽 <600 mobile、
+    // <1024 tablet、其余 desktop）。
+    final width = MediaQuery.maybeOf(context)?.size.width ?? 1024;
+    final conditions = <String, String?>{
+      'platform': defaultTargetPlatform.name,
+      'breakpoint': width < 600 ? 'mobile' : (width < 1024 ? 'tablet' : 'desktop'),
+    };
     final themeSwitch = app.widget.themeNames.isEmpty
         ? null
         : app.themeActions(app.widget.themeSelection?.value ?? page.frozen.theme);
@@ -175,7 +187,7 @@ class _PageHost extends StatelessWidget {
         title: Text(page.definition.route),
         actions: themeSwitch,
       ),
-      body: interpreter.renderPage(page),
+      body: interpreter.renderPage(page, conditions: conditions),
     );
   }
 
@@ -188,13 +200,20 @@ class _PageHost extends StatelessWidget {
     return null;
   }
 
-  String _localize(MFRuntime runtime, MFPageInstance page, String messageId, String locale) =>
-      mfLocalizePageMessage(
-        project: runtime.project,
-        instance: page,
-        messageId: messageId,
-        diagnostics: runtime.diagnostics,
-      );
+  String _localize(MFRuntime runtime, MFPageInstance page, String messageId, String locale) {
+    final diags = <MFDiag>[];
+    final out = mfLocalizePageMessage(
+      project: runtime.project,
+      instance: page,
+      messageId: messageId,
+      diagnostics: diags,
+    );
+    // 运行诊断统一经 diagSink 进入（§13.2 结构化运行诊断）。
+    for (final d in diags) {
+      runtime.diagSink.add(d);
+    }
+    return out;
+  }
 
   Map<String, ComponentContract> _primitiveContracts(MFRuntime runtime) {
     final out = <String, ComponentContract>{};

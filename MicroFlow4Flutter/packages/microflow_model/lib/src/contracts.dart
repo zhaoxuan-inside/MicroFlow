@@ -167,3 +167,14 @@ class MFTracePropagation {
   /// 载体字段名：运行时注入到适配器参数中的追踪上下文键。
   final List<String> carrier;
 }
+
+/// 启动元组件集（§38.1）：合规实现必须提供的最小元组件集。Tier B 客户端
+/// 必备、允许替换实现；缺失时按 §12/§38.1 声明降级或产生明确错误。
+/// 单一来源在模型层，渲染器与校验器共用（§38.1）。
+abstract final class MFTierA {
+  static const Set<String> required = {
+    'Text', 'Icon', 'Image', 'Button', 'Input', 'Select', 'Checkbox',
+    'Stack', 'Scroll', 'Overlay', 'List', 'Modal',
+  };
+  static const Set<String> tierB = {'Grid', 'Split', 'Anchor', 'Tabs', 'Drawer', 'Table'};
+}

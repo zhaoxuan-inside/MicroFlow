@@ -44,12 +44,88 @@ class MFInterpreter {
   /// Contracts for primitives declared in the registry (not Dart widgets).
   final Map<String, ComponentContract> primitiveContracts;
 
-  Widget renderPage(MFPageInstance instance) {
-    return _NodeRenderer(
-      interpreter: this,
-      instance: instance,
-      providedScopes: [],
-    ).build();
+  /// 渲染页面实例。`conditions` 提供样式/布局选择器上下文（§7.4 条件布局、
+  /// §36.4 变体条件：platform/breakpoint）；页面未声明显式图层树时按基线 12
+  /// 以隐式 ContentLayer 渲染，声明后按 §7.1 分区结构化。
+  Widget renderPage(MFPageInstance instance, {Map<String, String?> conditions = const {}}) {
+    final page = instance.definition;
+    if (!page.hasExplicitLayers) {
+      return _NodeRenderer(
+        interpreter: this,
+        instance: instance,
+        providedScopes: [],
+        layoutPlans: _resolveLayoutPlans(page, conditions),
+      ).build();
+    }
+    return _renderExplicitLayers(page, instance, conditions);
+  }
+
+  /// 条件布局解析（§7.4，基线 20）：target 为页面 id 时作用于根节点，否则
+  /// 作用于同 id 节点；声明序首个命中，全不命中回退默认方案。
+  Map<String, MFLayoutPlan> _resolveLayoutPlans(MFPage page, Map<String, String?> conditions) {
+    final plans = <String, MFLayoutPlan>{};
+    for (final cl in page.conditionalLayouts) {
+      plans[cl.target == page.id ? page.tree.id : cl.target] = cl.resolve(conditions);
+    }
+    return plans;
+  }
+
+  /// 显式图层结构化渲染（§7.1）：顶层子节点按 `layer` 声明（或节点 id 与
+  /// 分区 id 匹配）归入 header/footer/overlay 分区，其余进 ContentLayer；
+  /// content 分区声明 scroll 时支持滚动；overlay 以 Stack 覆盖。
+  Widget _renderExplicitLayers(MFPage page, MFPageInstance instance, Map<String, String?> conditions) {
+    final regions = page.layerRegions!;
+    final plans = _resolveLayoutPlans(page, conditions);
+    Widget renderNode(MFNode n) => _NodeRenderer(
+          interpreter: this,
+          instance: instance,
+          providedScopes: [],
+          layoutPlans: plans,
+        ).widgetFor(n);
+    Widget? header;
+    Widget? footer;
+    final overlay = <Widget>[];
+    final content = <Widget>[];
+    for (final child in page.tree.children) {
+      final regionId = child.layer ?? (regions.any((r) => r.id == child.id) ? child.id : null);
+      final widget = renderNode(child);
+      MFRegionConstraint? rc;
+      for (final r in regions) {
+        if (r.id == regionId) {
+          rc = r;
+          break;
+        }
+      }
+      if (rc == null) {
+        content.add(widget);
+      } else {
+        switch (rc.region) {
+          case 'header':
+            header = widget;
+          case 'footer':
+            footer = widget;
+          case 'overlay':
+            overlay.add(widget);
+          default:
+            content.add(widget);
+        }
+      }
+    }
+    final contentScroll = regions.any((r) => r.region == 'content' && r.scroll);
+    final contentArea = contentScroll
+        ? SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: content))
+        : Column(mainAxisSize: MainAxisSize.min, children: content);
+    Widget body = Column(children: [
+      ?header,
+      Expanded(child: contentArea),
+      ?footer,
+    ]);
+    if (overlay.isNotEmpty) {
+      // body 作为非定位子项撑起 Stack 尺寸，overlay 覆盖其上（§7.1 overlay
+      // 分区不再收缩宿主）。
+      body = Stack(children: [body, ...overlay]);
+    }
+    return KeyedSubtree(key: ValueKey('${instance.id}/${page.tree.id}'), child: body);
   }
 }
 
@@ -58,21 +134,47 @@ class _NodeRenderer {
     required this.interpreter,
     required this.instance,
     required this.providedScopes,
+    this.layoutPlans = const {},
   });
 
   final MFInterpreter interpreter;
   final MFPageInstance instance;
   final List<ProvidedScope> providedScopes;
 
+  /// 已解析的条件布局计划（§7.4）：node id -> 命中的声明方案。
+  final Map<String, MFLayoutPlan> layoutPlans;
+
   Widget build() => widgetFor(instance.definition.tree);
 
   Widget widgetFor(MFNode node) {
-    final childNodes = <MFNode>[...node.children, ...node.slots.values.expand((s) => s)];
+    // 插槽区分（§23.9）：slotOf 声明归属命名插槽，未声明的进默认插槽；
+    // 命名插槽不再静默并入默认插槽，由 primitive 按契约消费。
+    final defaultChildren = <MFNode>[];
+    final namedSlots = <String, List<MFNode>>{};
+    for (final child in node.children) {
+      final slot = child.slotOf;
+      if (slot == null || slot.isEmpty) {
+        defaultChildren.add(child);
+      } else {
+        namedSlots.putIfAbsent(slot, () => []).add(child);
+      }
+    }
+    for (final e in node.slots.entries) {
+      namedSlots.putIfAbsent(e.key, () => [...e.value]);
+    }
 
     final evaluated = <String, Object?>{};
     for (final e in node.props.entries) {
       final expr = MFExpr.parse(e.value);
       evaluated[e.key] = interpreter.runtime.safeEval(expr, _ctx());
+    }
+
+    // 条件布局计划（§7.4）：命中方案覆盖 Stack 的方向/对齐声明。
+    final plan = layoutPlans[node.id];
+    if (plan != null) {
+      if (plan.direction != null) evaluated['direction'] = plan.direction;
+      if (plan.align != null) evaluated['align'] = plan.align;
+      if (plan.crossAlign != null) evaluated['crossAlign'] = plan.crossAlign;
     }
 
     // Coverage chain (§36.6): `token < 组件默认样式片 < 页面覆盖 < 产品主题`.
@@ -110,7 +212,15 @@ class _NodeRenderer {
       tokenColor: (name) => resolveTokenColor(interpreter.resolveColor(name)),
     );
 
-    final view = MFNodeView(node: node, children: [for (final child in childNodes) widgetFor(child)]);
+    final view = MFNodeView(
+      node: node,
+      children: [for (final child in defaultChildren) widgetFor(child)],
+      slots: {
+        for (final e in namedSlots.entries)
+          e.key: [for (final c in e.value) widgetFor(c)],
+      },
+      childConstraints: [for (final child in defaultChildren) child.constraints],
+    );
 
     final builder = interpreter.table.builders[node.type];
     if (builder != null) {
@@ -121,7 +231,7 @@ class _NodeRenderer {
     final def = interpreter.runtime.project.components[node.type];
     if (def != null) {
       return KeyedSubtree(
-        key: ValueKey('${instance.id}/${node.id}'),
+        key: ValueKey(interpreter.runtime.ids.componentInstanceId(instance.id, node.id)),
         child: _ComponentScope(
           interpreter: interpreter,
           instance: instance,

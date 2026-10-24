@@ -30,12 +30,12 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
 
 | 模块 | 版本 | 公共 API（节选） |
 |---|---|---|
-| microflow_model | 0.3.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract`（含 `telemetry` 注记/`trace` 传播声明）、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFTheme/MFStyleSheet/MFStyleResolver`（§36.3-§36.6）、`MFSelfConstraint/MFConditionalLayout`（§7.2-§7.4）、`MFRecoveryContract`（§16.1）、`MFFinding`（§43.3）、`MFStandardEvents`、`MFDiag/MFCodes/mfDiagnosticRegistry` |
-| microflow_runtime | 0.3.0 | `MFRegistry/MFResourceEntry`、`MFRuntime`（含 `facts` Business Fact 通道、`recovery` 执行器、`debugEvents` 流与检查点、unknown 台账）、`MFValidator/MFValidationResult`（含 findingsReport）、`MFStateStore`、`MFLayoutSolver/staticLayoutChecks`（§7.3/§7.5）、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
-| microflow_observability | 0.2.0 | `MFEventEnvelope/MFTelemetryQueue/MFTelemetrySink/MFInMemorySink`、`MFReliableIngest`（§30.1 参考实现）、`MFLocalQueryEngine`（§30.2 五协议）、`MFStandardEvents`、`MFExperimentState/MFExperimentAssignment`、`MFDebugSession/MFDebugSnapshot/MFDebugController` |
-| microflow_renderer_flutter | 0.3.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`（含双层主题切换面）、`mfLocalizePageMessage`（§42.5）、`mfFlutterRendererContract`（§12.1）、`resolveTokenColor` |
-| microflow_authoring | 0.2.0 | `MFAuthoringSession`（`createPage/createPageFromTemplate/connectNavigation/registerFinding/validateProject/inspectImpact/undo`）、`MFCommandResult/MFRevision/MFImpactReport`（§14 命令面） |
-| microflow4_flutter（总包） | 0.5.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配 + themeProvider） |
+| microflow_model | 0.4.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract`（含 `telemetry` 注记/`trace` 传播声明）、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFTheme/MFStyleSheet/MFStyleResolver`（§36.3-§36.6）、`MFSelfConstraint/MFConditionalLayout`（§7.2-§7.4）、`MFRecoveryContract`（§16.1）、`MFFinding`（§43.3）、`MFStandardEvents`、`MFDiag/MFCodes/mfDiagnosticRegistry` |
+| microflow_runtime | 0.4.0 | `MFRegistry/MFResourceEntry`、`MFRuntime`（含 `facts` Business Fact 通道、`recovery` 执行器、`debugEvents` 流与检查点、unknown 台账）、`MFValidator/MFValidationResult`（含 findingsReport）、`MFStateStore`、`MFLayoutSolver/staticLayoutChecks`（§7.3/§7.5）、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
+| microflow_observability | 0.3.0 | `MFEventEnvelope/MFTelemetryQueue/MFTelemetrySink/MFInMemorySink`、`MFReliableIngest`（§30.1 参考实现）、`MFLocalQueryEngine`（§30.2 五协议）、`MFStandardEvents`、`MFExperimentState/MFExperimentAssignment`、`MFDebugSession/MFDebugSnapshot/MFDebugController` |
+| microflow_renderer_flutter | 0.4.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`（含双层主题切换面）、`mfLocalizePageMessage`（§42.5）、`mfFlutterRendererContract`（§12.1）、`resolveTokenColor` |
+| microflow_authoring | 0.3.0 | `MFAuthoringSession`（`createPage/createPageFromTemplate/connectNavigation/registerFinding/validateProject/inspectImpact/undo`）、`MFCommandResult/MFRevision/MFImpactReport`（§14 命令面） |
+| microflow4_flutter（总包） | 0.6.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配 + themeProvider） |
 
 ## 已实现能力（按 §38.2 分级如实声明）
 
@@ -43,11 +43,14 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
   主题（extends 重定向、完整性检查）、样式片（变体条件、承接链、字面量禁令）、
   覆盖链（token < 组件默认样式片 < 页面覆盖 < 产品主题）、交互与绑定语法静态检查、
   布局约束 Schema 与静态检查（§36、§37、§7.2-§7.5 静态面）；
-- **Level 1 已实现（解释模式）**：页面实例 / 导航 / 状态层 / 绑定映射 /
-  并发策略 / guard / 超时 unknown / 错误边界；Tier A 元组件渲染 + Tier B
-  Tabs/Drawer/Table/Grid；覆盖链按实例冻结主题渲染（基线 7）；§7.3 布局
-  求解为确定性纯函数基线（`MFLayoutSolver.solveStack`，尚未接入 Flutter
-  渲染路径——渲染走原生 Row/Column，求解语义由基线 18-21 固定）；
+- **Level 1 已实现（解释模式）**：页面实例 / 导航 / 状态层（page/session/
+  product）/ 绑定映射 / 并发策略（含 queue 串行排队）/ guard / 超时 unknown /
+  错误边界（绑定级 + 页面级默认）；Tier A 12/12 + Tier B 6/6 元组件渲染；
+  覆盖链按实例冻结主题渲染（基线 7）；声明式布局被渲染消费——节点自约束
+  （fill→Expanded、fixed→SizedBox，§7.2/§7.3）、条件布局方案（§7.4）、
+  显式图层 header/footer/overlay/content（§7.1）、插槽区分（§23.9）；
+  §7.3 形式化求解基线 `MFLayoutSolver.solveStack` 与渲染约束映射同语义
+  （基线 18-21 固定）；
 - **Level 2 协议面已定义并部分实现**：遥测信封 Schema 校验与有界队列、
   标准运营事件族零埋点（`ops.page.viewed/left`、`ops.feature.used`）+
   采集注记零埋点发射（§24.7，走完整校验管道）、实验分配校验冻结停用、
@@ -62,9 +65,8 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
   失败不改模型；修改审计（前后摘要/影响对象/主体）与可回滚修订；
   页面模板参数化实例化；findings 回流登记（§43.3）。
 
-尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、Tier B
-Split/Anchor、§36.5 动效面、i18n 镜像/伪本地化、发布快照构建器与性能
-预算门禁（§16/§22.2）、增量构建（§22.2）。
+尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、§36.5 动效面、
+发布快照构建器与性能预算门禁（§16/§22.2）、增量构建（§22.2）。
 
 ## 一致性基线覆盖（机器可读）
 

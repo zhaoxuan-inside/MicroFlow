@@ -406,6 +406,9 @@ class MFAuthoringSession {
             e.key: [for (final c in e.value) _instantiateTree(c, params)],
         },
         t: node.t,
+        style: node.style,
+        constraints: node.constraints,
+        layer: node.layer,
       );
 
   static final RegExp _paramPattern = RegExp(r'\{\{(\w+)\}\}');

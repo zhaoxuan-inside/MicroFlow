@@ -18,6 +18,7 @@ class MFNode {
     this.t,
     this.style,
     this.constraints,
+    this.layer,
   });
 
   /// Node id, unique within its defining tree; used as binding event anchor
@@ -51,6 +52,11 @@ class MFNode {
   /// Node self constraint (§7.2); `null` means hug both axes (default for
   /// simple nodes) with no extra bounds.
   final MFSelfConstraint? constraints;
+
+  /// 显式图层归属（§7.1）：本节点落入页面 `layerRegions` 中 id 匹配的分区
+  /// （header/footer/overlay/content）；未声明时顶层节点按 id 匹配分区，
+  /// 其余进 ContentLayer。引用不存在的分区 id 是静态错误（mf.ref.dangling）。
+  final String? layer;
 
   /// Depth-first search for a node by id within this subtree.
   MFNode? find(String nodeId) {

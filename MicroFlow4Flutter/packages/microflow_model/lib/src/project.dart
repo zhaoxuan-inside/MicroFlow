@@ -242,6 +242,21 @@ class MFI18nCatalog {
     }
     return out;
   }
+
+  /// 伪本地化视图（§42 开发期工具）：把全部 message 值包裹标记后返回新目录，
+  /// 用于预览环境暴露未被 i18n 覆盖的字面量与截断/方向问题；不改变回退链
+  /// 与占位插值语义。
+  MFI18nCatalog pseudoLocalized({String prefix = '[', String suffix = ']'}) => MFI18nCatalog(
+        defaultLocale: defaultLocale,
+        supportedLocales: supportedLocales,
+        fallback: fallback,
+        messages: {
+          for (final e in messages.entries)
+            e.key: {
+              for (final v in e.value.entries) v.key: '$prefix${v.value}$suffix',
+            },
+        },
+      );
 }
 
 /// Minimal token set (§36.2): named platform-neutral semantic values.

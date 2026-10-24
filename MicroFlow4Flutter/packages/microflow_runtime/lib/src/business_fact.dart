@@ -79,7 +79,7 @@ class MFBusinessFactChannel {
     final requestId = MFInstanceIdentifiers.newRequestId();
     final existing = _records[idempotencyKey];
     if (existing != null) {
-      runtime.diagnostics.add(MFDiag(
+      runtime.diagSink.add(MFDiag(
         MFCodes.dataFactDuplicate,
         'Business Fact $factRef 幂等键 $idempotencyKey 重复提交，返回既有记录',
         stage: Stage.runtime,
@@ -94,7 +94,7 @@ class MFBusinessFactChannel {
       _ => null,
     };
     if (impl == null) {
-      runtime.diagnostics.add(MFDiag(MFCodes.capUnavailable, 'Business Fact $factRef 调用 $call 无可用实现',
+      runtime.diagSink.add(MFDiag(MFCodes.capUnavailable, 'Business Fact $factRef 调用 $call 无可用实现',
           stage: Stage.runtime));
       return _record(factRef, idempotencyKey, requestId, 'unknown', reason: 'unregistered-call');
     }
@@ -109,7 +109,7 @@ class MFBusinessFactChannel {
       // unknown (§24.8, baseline 11/28).
       return _record(factRef, idempotencyKey, requestId, 'unknown', reason: 'no-external-run-ref');
     } on TimeoutException {
-      runtime.diagnostics.add(
+      runtime.diagSink.add(
           MFDiag(MFCodes.dataTimeout, 'Business Fact $factRef 超时，进入 unknown', stage: Stage.runtime));
       return _record(factRef, idempotencyKey, requestId, 'unknown', reason: 'timeout');
     } catch (err) {

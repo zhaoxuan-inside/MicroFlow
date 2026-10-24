@@ -1,3 +1,36 @@
+## 0.6.0
+
+M2 收尾清零（遗留项完整修复）——
+* 渲染合一（Level 1 遗留主项）：解释器消费声明式布局模型——节点自约束
+  `MFSelfConstraint` 映射渲染（fill 主轴 → Expanded、fixed → SizedBox、
+  hug 按内容）；页面 `conditionalLayouts` 条件方案被渲染消费（§7.4，
+  target 页面/节点均可，命中方案覆盖 Stack 方向/对齐）；显式 `layerRegions`
+  按 header/footer/overlay/content 结构化渲染（§7.1，content 支持声明滚动，
+  overlay 不再收缩宿主），未声明仍走隐式 ContentLayer（基线 12）；插槽
+  区分（§23.9）：`slotOf`/命名插槽不再静默并入默认插槽，MFNodeView 按
+  契约插槽传递。
+* 修复渲染管道断点：primitive builders 改为消费已求值的 MFRenderContext
+  （此前读取原始 node.props，条件布局方向、i18n 文本覆盖与样式 aspect
+  均不会生效）。
+* Tier B 补齐 Split/Anchor（§38.1 6/6）：Split 声明式 weights 分配，
+  Anchor 仅相对容器边锚定（§7.3）。
+* 协议债清零：`MFPage.errorBoundary` 被消费（绑定未声明边界时回退页面级
+  边界）；product 状态作用域如实落位（§11，此前静默写 page 层）；queue
+  并发策略真排队串行执行（§39.1，此前空实现）；`mf.tele.manual-standard-event`
+  发射点落地（观测面拦截无运行时来源标记的标准事件族上报）；`mf.style.face-undeclared`
+  发射点落地（节点样式片消费的 aspect 未在契约 exposedStyles 声明）；MFTierA
+  单一来源移至模型层 + validator Tier A 缺失 warning 门禁；`MicroFlowApp.contract`
+  暴露 mfFlutterRendererContract 生产消费点；渲染修订号 renderRevision 进入
+  Debug 上下文（§12.1）；组件实例键走 `componentInstanceId`；运行诊断统一经
+  MFDiagSink 承载；i18n 伪本地化视图 `MFI18nCatalog.pseudoLocalized`（§42
+  开发期工具）。
+* MFNode 新增 `layer` 显式图层归属字段（§7.1），validator 校验归属悬空；
+  authoring 模板实例化携带 layer/style/constraints。
+* 测试 test/closeout_test.dart（14 用例）：queue 排队、手工上报拦截、
+  product 作用域、页面级边界、renderRevision、Tier A 门禁、face-undeclared、
+  图层悬空、伪本地化 + 5 个 widget 测试（显式图层/约束映射/条件布局/
+  Split/Anchor/契约）。全量 58 用例，analyze 0 issues。
+
 ## 0.5.0
 
 M2（PLAN.md）：观测与恢复闭环 ——

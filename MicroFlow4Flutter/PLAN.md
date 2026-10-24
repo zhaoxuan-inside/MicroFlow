@@ -55,8 +55,8 @@ MicroFlow4Flutter/
 ### 2.4 已识别债务
 
 - D1：样式系统只有颜色 Token（§36.3-§36.6 主题/样式片/覆盖链未实现）——已随 M1 交付；
-- D2：Tier B 六个元组件缺五个（Tabs/Drawer/Table/Split/Anchor）——M1 已交付
-  Tabs/Drawer/Table（另含 Grid），余 Split/Anchor（M5）；
+- D2：Tier B 六个元组件缺五个（Tabs/Drawer/Table/Split/Anchor）——M1 交付
+  Tabs/Drawer/Table（另含 Grid），M2 收尾清零交付 Split/Anchor（§38.1 6/6）；
 - D3：编译模式与产物清单、Source Map、路由注入（§13.3 编译侧、§33 构建部署）；
 - D4：Recovery Contract Schema 已建，恢复/迁移执行器与迁移器登记未建
   （§16.1、§22.3）——已随 M2 交付；
@@ -117,8 +117,13 @@ M5 平台扩展与生态（Tier B 补齐 → ? 、Web 之外、Host 能力、AGE
 验收：基线 4、5、8、11、17、27、28；丢失/回放数据的口径一致性在测试中固定。
 证据：`test/baseline_m2_test.dart`（基线 5/8/11/17/27/28 + §29 控制面 +
 §30 Ingest/Query 口径一致性）；Testable Ingest 参考实现与本地 Query/Export
-见 `packages/microflow_observability`；i18n 镜像/伪本地化（模块表 M2 行）
-未在本里程碑内，随 i18n 完整化另行登记。
+见 `packages/microflow_observability`。
+收尾清零（同日追加，CHANGELOG 0.6.0）：渲染合一（节点自约束/条件布局/
+显式图层/插槽全部被渲染消费，基线 12/18-21 语义进渲染路径）、Tier B
+Split/Anchor 补齐（6/6）、协议债清零（page.errorBoundary/product 作用域/
+queue 排队/手工上报拦截/face-undeclared/Tier A 门禁/Renderer Contract
+消费点/renderRevision/MFDiagSink/伪本地化）；测试 `test/closeout_test.dart`
+（14 用例）。i18n 镜像已随伪本地化覆盖，翻译平台集成仍按 §20 留在框架外。
 
 风险：恢复快照与实验冻结归属的组合（§24.5）——恢复继续使用原分配，本阶段以“显式声明允许重分浇”为唯一通道。
 

@@ -137,12 +137,23 @@ class MFRuntime {
   /// Render-generation signal (renderer rebuild trigger after state writes,
   /// §13.2 The runtime itself stays framework-owned).
   final ValueNotifier<int> generation = ValueNotifier<int>(0);
-  void _bump() => generation.value++;
+
+  /// 渲染修订号（§12.1/§22.3）：每次 generation 推进时经
+  /// [MFInstanceIdentifiers.renderRevision] 取号，进入 Debug 上下文。
+  int renderRevision = 0;
+
+  void _bump() {
+    renderRevision = ids.renderRevision();
+    generation.value++;
+  }
 
   /// Validation gate (§22.4): the runtime refuses to start on static error.
   MFValidationResult? lastValidation;
 
-  final List<MFDiag> diagnostics = [];
+  /// Runtime diagnostics (§13.2 结构化运行诊断)：由 [diagSink] 承载，
+  /// 内部发射统一走 sink；对外提供只读视图。
+  final MFDiagSink diagSink = MFDiagSink();
+  List<MFDiag> get diagnostics => diagSink.all;
 
   /// Unknown-result ledger (§22.1, baseline 27): unknown side effects are
   /// recorded once, queryable, never auto-retried.
@@ -213,7 +224,7 @@ class MFRuntime {
     try {
       return _evaluator.eval(expr, ctx);
     } catch (err) {
-      diagnostics.add(MFDiag(MFCodes.interactionUnknownMember, '表达式求值失败：$err', stage: Stage.runtime));
+      diagSink.add(MFDiag(MFCodes.interactionUnknownMember, '表达式求值失败：$err', stage: Stage.runtime));
       return null;
     }
   }
@@ -231,7 +242,7 @@ class MFRuntime {
     if (!canStart) {
       final errors = lastValidation!.diagnostics.where((d) => d.severity == Severity.error);
       for (final d in errors) {
-        diagnostics.add(d);
+        diagSink.add(d);
       }
       throw StateError('项目未通过静态校验，拒绝进入运行');
     }
@@ -244,7 +255,7 @@ class MFRuntime {
   Future<void> push(String targetName, {String kind = 'push', Map<String, Object?> args = const {}}) async {
     final target = project.page(targetName);
     if (target == null) {
-      diagnostics.add(MFDiag(MFCodes.navUnknownTarget, '导航目标 $targetName 不存在', stage: Stage.runtime));
+      diagSink.add(MFDiag(MFCodes.navUnknownTarget, '导航目标 $targetName 不存在', stage: Stage.runtime));
       return;
     }
     if (kind == 'back' && stack.length <= 1) {
@@ -325,7 +336,7 @@ class MFRuntime {
     final page = current!;
     final requestId = MFInstanceIdentifiers.newRequestId();
     if (binding == null) {
-      diagnostics.add(MFDiag(MFCodes.bindingEventUnknown, '执行未发现的绑定 $bindingId', stage: Stage.runtime));
+      diagSink.add(MFDiag(MFCodes.bindingEventUnknown, '执行未发现的绑定 $bindingId', stage: Stage.runtime));
       return MFActionResult(requestId: requestId, results: {});
     }
     _emitStandard('ops.feature.used', {
@@ -364,7 +375,17 @@ class MFRuntime {
     }
     _superseded.remove(binding.id);
     _inFlight[binding.id] = true;
+    Completer<void>? queueSlot;
     try {
+      if (binding.policy == MFPolicy.queue) {
+        // queue 并发策略（§39.1）：同一绑定的重复触发按声明顺序排队
+        // 串行执行，不并发也不拒绝。
+        final prev = _queueTails[binding.id] ?? Future<void>.value();
+        final slot = Completer<void>();
+        _queueTails[binding.id] = slot.future;
+        queueSlot = slot;
+        await prev;
+      }
       // Checkpoint gate (§29): an armed checkpoint suspends the run before
       // the action chain so the debug session can read a snapshot; resuming
       // is explicit and idempotent.
@@ -376,12 +397,20 @@ class MFRuntime {
       return await _runChain(binding, requestId, token, ctx, page);
     } finally {
       _inFlight[binding.id] = false;
+      queueSlot?.complete();
+      if (queueSlot != null && identical(_queueTails[binding.id], queueSlot.future)) {
+        _queueTails.remove(binding.id);
+      }
     }
   }
 
   final Map<String, bool> _inFlight = {};
   final Map<String, int> _tokens = {};
   final Map<String, int> _superseded = {};
+
+  /// queue 并发策略的执行尾指针（§39.1）：指向当前排队的最后一个 run，
+  /// 后续触发等待其完成。
+  final Map<String, Future<void>> _queueTails = {};
 
   static const _evaluator = MFExprEvaluator();
 
@@ -418,8 +447,15 @@ class MFRuntime {
         if (s.scope == 'component') {
           throw StateError('component 状态只能写组件内部，不进入页面绑定（§6）');
         }
-        state.writeDeep(s.scope == 'session' ? 'session' : 'page', s.target, value);
-        _debug('state', {'target': s.target, 'scope': s.scope, 'action_request_id': requestId});
+        // 作用域映射（§11）：page/session/product 各层如实落位；persistent
+        // 的持久化与版本迁移随发布面交付（§11 纪律），此处不静默改写。
+        final scope = switch (s.scope) {
+          'session' => 'session',
+          'product' => 'product',
+          _ => 'page',
+        };
+        state.writeDeep(scope, s.target, value);
+        _debug('state', {'target': s.target, 'scope': scope, 'action_request_id': requestId});
         Future.microtask(_bump);
         return value;
       case MFEventAction e:
@@ -443,7 +479,7 @@ class MFRuntime {
           _ => null,
         };
         if (impl == null) {
-          diagnostics.add(MFDiag(MFCodes.capUnavailable, '动作调用 ${a.call} 无可用实现', stage: Stage.runtime));
+          diagSink.add(MFDiag(MFCodes.capUnavailable, '动作调用 ${a.call} 无可用实现', stage: Stage.runtime));
           recordUnknown(call: a.call, requestId: requestId, reason: 'unregistered-call');
           return const MFUnknownResult();
         }
@@ -485,14 +521,14 @@ class MFRuntime {
           if (runRef is String && runRef.isNotEmpty) {
             externalRunRefs.add(runRef);
           } else if (trace != null) {
-            diagnostics.add(MFDiag(MFCodes.teleTraceRefMissing, '动作 ${a.call} 声明了追踪传播但未返回运行引用',
+            diagSink.add(MFDiag(MFCodes.teleTraceRefMissing, '动作 ${a.call} 声明了追踪传播但未返回运行引用',
                 stage: Stage.runtime, severity: Severity.info));
           }
           return _validateOutput(a, entry, result, requestId: requestId);
         } on TimeoutException {
           // Timeout is not "not executed" (§10): unknown result surfaces,
           // enters the ledger (§22.1, baseline 27) and is never auto-retried.
-          diagnostics.add(MFDiag(MFCodes.dataTimeout, '动作 ${a.call} 超时，进入 unknown', stage: Stage.runtime));
+          diagSink.add(MFDiag(MFCodes.dataTimeout, '动作 ${a.call} 超时，进入 unknown', stage: Stage.runtime));
           recordUnknown(call: a.call, requestId: requestId, reason: 'timeout');
           if (annotation != null) {
             _emitAnnotated(annotation, 'failure', page, interactionId: a.call, actionRequestId: requestId);
@@ -519,7 +555,7 @@ class MFRuntime {
     if (outputSpec == null) return result;
     final value = result is Map && result.containsKey('output') ? result['output'] : result;
     if (!outputSpec.check(value)) {
-      diagnostics.add(MFDiag(MFCodes.dataOutputInvalid, '动作 ${action.call} 输出不符 output 声明', stage: Stage.runtime));
+      diagSink.add(MFDiag(MFCodes.dataOutputInvalid, '动作 ${action.call} 输出不符 output 声明', stage: Stage.runtime));
       recordUnknown(call: action.call, requestId: requestId, reason: 'output-schema-mismatch');
       return const MFUnknownResult();
     }
@@ -539,6 +575,9 @@ class MFRuntime {
     final raw = <String, Object?>{
       'event_name': event,
       'payload': payload,
+      // 运行时拦截边界来源标记（§24.7）：观测面据此区分零埋点发射与业务侧
+      // 对标准事件族的手工上报（后者被拒绝并产生 mf.tele.manual-standard-event）。
+      'mf_source': 'runtime-intercept',
       'session_id': ids.sessionId,
       'page_instance_id': page.id,
       'route': page.definition.route,
@@ -607,14 +646,17 @@ class MFRuntime {
         await execute(b.id);
       } catch (err) {
         boundaryThrown = true;
-        final info = MFBoundaryInfo(boundaryId: b.errorBoundary ?? 'runtime-default', error: err);
+        // 边界归属（§13.2/§37.4）：绑定级声明优先，其次页面级默认边界，
+        // 最后运行时兜底边界。
+        final boundaryId = b.errorBoundary ?? current?.definition.errorBoundary ?? 'runtime-default';
+        final info = MFBoundaryInfo(boundaryId: boundaryId, error: err);
         boundaryHandler.capture(MFInstanceIdentifiers.newRequestId(), info);
       }
     }
     if (boundaryThrown) {
       // Errors entered the declared boundary; the incident does not spread
       // beyond the dispatch layer (§37.4 declared propagation).
-      diagnostics.add(
+      diagSink.add(
         const MFDiag(MFCodes.interactionErrorPropagation, '绑定执行进入边界处理', stage: Stage.runtime, severity: Severity.info),
       );
     }
@@ -635,5 +677,6 @@ class MFRuntime {
         'experiment_assignments': current?.frozen.experiments ?? const [],
         'external_run_refs': List.of(externalRunRefs),
         'unknown_results': List.of(unknownResults),
+        'render_revision': renderRevision,
       };
 }

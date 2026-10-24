@@ -107,7 +107,19 @@ class MFValidator {
     _validateRecovery(diags);
     _validateTelemetryAnnotations(diags);
     _validateFindings(diags, result);
+    _validateTierA(diags);
     return result;
+  }
+
+  /// Tier A 启动元组件集完整性（§38.1）：注册面缺失必备元组件按 warning
+  /// 上报（不阻断纯配置项目，发布门禁按 §38.2 由 Renderer Contract 验收）。
+  void _validateTierA(List<MFDiag> diags) {
+    for (final id in MFTierA.required) {
+      if (!registry.has(id)) {
+        diags.add(MFDiag(MFCodes.regUnregisteredImpl, 'Tier A 必备元组件 $id 未注册实现（§38.1）',
+            severity: Severity.warning));
+      }
+    }
   }
 
   /// Recovery contract gate (§16.1): `unknown_side_effects.auto_retry` is
@@ -272,6 +284,11 @@ class MFValidator {
     }
     for (final node in page.tree.flatten()) {
       result.index.record(page.id, node.type);
+      // 显式图层归属（§7.1）：节点 layer 必须指向本页已声明的分区 id，
+      // 悬空归属是静态错误。
+      if (node.layer != null && !(page.layerRegions ?? const []).any((r) => r.id == node.layer)) {
+        diags.add(MFDiag(MFCodes.refDangling, '节点 ${node.id} 的图层归属 ${node.layer} 未在页面 ${page.id} 的分区中声明（§7.1）'));
+      }
     }
   }
 
@@ -287,7 +304,30 @@ class MFValidator {
       // tree may only carry structural/style/binding resources — inline
       // executable logic in prop values is rejected.
       _rejectInlineLogic(node, ownerId, diags);
+      _validateStyleFace(node, ownerId, diags);
       result.index.record(ownerId, node.type);
+    }
+  }
+
+  /// 样式面声明检查（§36.5 契约声明，mf.style.face-undeclared）：节点引用
+  /// 样式片时，渲染消费的 aspect 必须在目标组件契约 exposedStyles 中声明；
+  /// 契约未声明任何样式面（exposedStyles 为空）时保守跳过。
+  void _validateStyleFace(MFNode node, String ownerId, List<MFDiag> diags) {
+    final styleId = node.style;
+    if (styleId == null) return;
+    final sheet = project.styleSheets[styleId];
+    if (sheet == null) return; // 悬空样式片引用由 mf.ref.dangling 面处理
+    final contract = _contractOf(node.type);
+    if (contract == null || contract.exposedStyles.isEmpty) return;
+    final provided = <String>{
+      ...sheet.base.keys,
+      for (final v in sheet.variants) ...v.set.keys,
+    };
+    for (final aspect in provided.intersection({'foreground', 'background'})) {
+      if (!contract.exposedStyles.contains(aspect)) {
+        diags.add(MFDiag(MFCodes.styleFaceUndeclared,
+            '节点 ${node.id} 的样式片 $styleId 消费 aspect $aspect，未在 ${node.type} 契约 exposedStyles 声明（§36.5）'));
+      }
     }
   }
 
