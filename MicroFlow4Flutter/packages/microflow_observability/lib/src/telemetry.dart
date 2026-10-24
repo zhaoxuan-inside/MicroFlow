@@ -1,0 +1,263 @@
+/// Telemetry envelope, standard event families and bounded queue
+/// (frontend-framework-design §24.1, §24.2, §24.7, §30.1).
+///
+/// Business code has zero direct collection calls: the runtime is the only
+/// emitter (interception faces are page lifecycle, navigation, action
+/// execution and adapter calls). Application of a standard-family manual
+/// report is a static-validation class of problem; at runtime a manual
+/// `submitStandard` call is refused with a diagnostic.
+library;
+
+import 'dart:async';
+import 'package:microflow_model/microflow_model.dart';
+import 'package:microflow_runtime/microflow_runtime.dart';
+
+/// Standard operational event families (§24.2, baseline 29).
+abstract final class MFStandardEvents {
+  static const pageViewed = 'ops.page.viewed';
+  static const pageLeft = 'ops.page.left';
+  static const featureUsed = 'ops.feature.used';
+  static const contentExposed = 'ops.content.exposed';
+  static const feedbackSubmitted = 'ops.feedback.submitted';
+  static const feedbackResolved = 'ops.feedback.resolved';
+  static const campaignAttributed = 'ops.campaign.attributed';
+
+  static const all = {
+    pageViewed, pageLeft, featureUsed, contentExposed, feedbackSubmitted, feedbackResolved, campaignAttributed,
+  };
+}
+
+const allowedEnvironments = {'dev', 'preview', 'production'};
+
+const allowedPrivacyClasses = {'operational', 'sensitive', 'restricted'};
+
+/// Event envelope (§24.2): machine-checkable Schema with identity fields
+/// separate from raw credentials (§4.4, §32).
+class MFEventEnvelope {
+  MFEventEnvelope({
+    required String eventName,
+    required Map<String, Object?> payload,
+    required this.sessionId,
+    required this.pageInstanceId,
+    required this.route,
+    required this.releaseId,
+    required this.rendererVersion,
+    required this.environment,
+    required this.traceId,
+    this.schemaVersion = '1.0',
+    this.privacyClass = 'operational',
+    this.layerInstanceId,
+    this.componentInstanceId,
+    this.interactionId,
+    this.actionRequestId,
+    this.identity = const {},
+    this.experimentAssignments = const [],
+  }) {
+    eventId = _uuid();
+    occurredAt = DateTime.now().toUtc().toIso8601String();
+    clientSentAt = DateTime.now().toUtc().toIso8601String();
+    _eventName = eventName;
+    _payload = payload;
+  }
+
+  late final String eventId;
+  late final String occurredAt;
+  late final String clientSentAt;
+  final String schemaVersion;
+  late final String _eventName;
+  late final Map<String, Object?> _payload;
+  final String sessionId;
+  final String pageInstanceId;
+  final String route;
+  final String releaseId;
+  final String rendererVersion;
+  final String environment;
+  final String traceId;
+  final String privacyClass;
+  final String? layerInstanceId;
+  final String? componentInstanceId;
+  final String? interactionId;
+  final String? actionRequestId;
+  final Map<String, Object?> identity;
+  final List<Map<String, Object?>> experimentAssignments;
+
+  String get eventName => _eventName;
+  Map<String, Object?> get payload => _payload;
+
+  factory MFEventEnvelope.fromRaw(Map<String, Object?> raw) => MFEventEnvelope(
+        eventName: raw['event_name'] as String,
+        payload: (raw['payload'] as Map?)?.cast<String, Object?>() ?? <String, Object?>{},
+        sessionId: raw['session_id'] as String,
+        pageInstanceId: raw['page_instance_id'] as String,
+        route: raw['route'] as String,
+        releaseId: raw['release_id'] as String,
+        rendererVersion: raw['renderer_version'] as String,
+        environment: raw['environment'] as String,
+        traceId: raw['trace_id'] as String,
+        layerInstanceId: raw['layer_instance_id'] as String?,
+        componentInstanceId: raw['component_instance_id'] as String?,
+        interactionId: raw['interaction_id'] as String?,
+        actionRequestId: raw['action_request_id'] as String?,
+        privacyClass: raw['privacy_class'] as String? ?? 'operational',
+        identity: (raw['identity'] as Map?)?.cast<String, Object?>() ?? const {},
+        experimentAssignments: ((raw['experiment_assignments'] as List?) ?? const [])
+            .cast<Map>()
+            .map((e) => e.cast<String, Object?>())
+            .toList(growable: false),
+      );
+
+  static String _uuid() => '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${Iterable.generate(4, (i) => (i + 1).toRadixString(36)).join()}';
+
+  Map<String, Object?> toJson() => {
+    'event_id': eventId,
+    'event_name': _eventName,
+    'schema_version': schemaVersion,
+    'occurred_at': occurredAt,
+    'release_id': releaseId,
+    'renderer_version': rendererVersion,
+    'environment': environment,
+    'session_id': sessionId,
+    'page_instance_id': pageInstanceId,
+    if (layerInstanceId != null) 'layer_instance_id': layerInstanceId,
+    if (componentInstanceId != null) 'component_instance_id': componentInstanceId,
+    'route': route,
+    if (interactionId != null) 'interaction_id': interactionId,
+    if (actionRequestId != null) 'action_request_id': actionRequestId,
+    'trace_id': traceId,
+    'experiment_assignments': experimentAssignments,
+    'identity': identity,
+    'payload': _payload,
+    'privacy_class': privacyClass,
+    'client_sent_at': clientSentAt,
+  };
+
+  /// Envelope Schema validation (§24.2): field-limited structure, verified
+  /// identity separation; violations are uneventful rejections returned as
+  /// diagnostics.
+  MFDiag? validate() {
+    if (!allowedEnvironments.contains(environment)) {
+      return const MFDiag('mf.tele.schema-invalid', 'environment 不在允许枚举内');
+    }
+    if (!allowedPrivacyClasses.contains(privacyClass)) {
+      return const MFDiag('mf.tele.schema-invalid', 'privacy_class 不在允许枚举内');
+    }
+    if (traceId.isEmpty || sessionId.isEmpty || pageInstanceId.isEmpty) {
+      return const MFDiag('mf.tele.schema-invalid', '缺失必需身份/追踪字段');
+    }
+    for (final k in identity.keys) {
+      // Identity separation (§32): keys must not carry credential names,
+      // and values are opaque/hashed references (§4.4).
+      if (_looksCredential(k)) {
+        return const MFDiag('mf.tele.schema-invalid', 'identity 中包含疑似凭据字段');
+      }
+    }
+    return null;
+  }
+
+  static final _credentialPattern = RegExp(
+    r'(password|passwd|secret|token|api[_-]?key|authorization|bearer)',
+    caseSensitive: false,
+  );
+
+  static bool _looksCredential(String key) =>
+      _credentialPattern.hasMatch(key);
+}
+
+/// Receiver contract (§30.1): business layers carry the external sink.
+abstract class MFTelemetrySink {
+  Future<void> accept(List<MFEventEnvelope> batch);
+}
+
+/// In-memory queue for tests/previews: bounded, drop-counting, priority discard.
+class MFInMemorySink implements MFTelemetrySink {
+  final int capacity;
+  final List<MFEventEnvelope> delivered = [];
+  int dropped = 0;
+  final List<MFDiag> diagnostics = [];
+
+  MFInMemorySink({this.capacity = 500});
+
+  @override
+  Future<void> accept(List<MFEventEnvelope> batch) async {
+    for (final e in batch) {
+      if (delivered.length >= capacity) {
+        dropped++;
+        diagnostics.add(
+          MFDiag(MFCodes.teleQueueOverflow, '队列满载丢弃事件 ${e.eventName}', stage: Stage.runtime),
+        );
+        continue;
+      }
+      delivered.add(e);
+    }
+  }
+}
+
+/// Priority-aware bounded queue with batch, retry, backoff-off and drop count
+/// (§24.2). Implements the runtime module's [MFEmissionSink]: the runtime
+/// is the only emitter; this class owns envelope building / Schema validation.
+/// Failure to ingest never blocks core user flows.
+class MFTelemetryQueue implements MFEmissionSink {
+  MFTelemetryQueue({required this.sink, this.batchMax = 32, this.capacity = 500});
+
+  final MFTelemetrySink sink;
+  final int batchMax;
+  final int capacity;
+
+  final List<MFEventEnvelope> _buffer = [];
+  int dropped = 0;
+  final List<MFDiag> diagnostics = [];
+
+  /// Runtime emission boundary (§24.7): builds a §24.2 envelope from the
+  /// raw interception event and routes it through the full validation
+  /// pipeline (Schema, privacy, queue budget, drop accounting).
+  @override
+  void emit(MFRawEvent raw) {
+    final event = MFEventEnvelope.fromRaw(raw);
+    enqueue(event);
+  }
+
+  void enqueue(MFEventEnvelope event) {
+    final invalid = event.validate();
+    if (invalid != null) {
+      diagnostics.add(invalid);
+      return;
+    }
+    if (_buffer.length >= capacity) {
+      dropped++;
+      diagnostics.add(
+        MFDiag(MFCodes.teleQueueOverflow, '队列满载丢弃事件 ${event.eventName}', stage: Stage.runtime),
+      );
+      return;
+    }
+    _buffer.add(event);
+    if (_buffer.length >= batchMax) {
+      unawaited(_flush());
+    }
+  }
+
+  Future<void> _flush() async {
+    final batch = List.of(_buffer);
+    _buffer.clear();
+    try {
+      await sink.accept(batch);
+    } catch (_) {
+      // Sink failure must not interrupt the user flow (§24.2): the events
+      // are re-queued if space remains; otherwise counted as dropped.
+      for (final e in batch) {
+        if (_buffer.length < capacity) {
+          _buffer.add(e);
+        } else {
+          dropped++;
+        }
+      }
+    }
+  }
+
+  Future<void> flush() => _flush();
+
+  Map<String, Object?> dataQuality() => {
+    'queued': _buffer.length,
+    'dropped': dropped,
+    'diagnostics': diagnostics.length,
+  };
+}

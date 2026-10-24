@@ -1,0 +1,12 @@
+name: microflow4_flutter_example
+description: §44.2 规范性最小示例 “备忘（Notes）” 的 MicroFlow Flutter 解释运行版
+publish_to: none
+environment:
+  sdk: ^3.13.5
+dependencies:
+  flutter:
+    sdk: flutter
+  microflow4_flutter:
+    path: ../
+flutter:
+  uses-material-design: true

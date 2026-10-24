@@ -1,0 +1,19 @@
+name: microflow_renderer_flutter
+description: >-
+  MicroFlow Frontend 的 Flutter Renderer 模块（§12、§13.3 解释模式、§38 Tier A
+  元组件渲染、§41 层实例身份）。依赖 runtime 模块的公共 API，不依赖
+  observability 的实现细节。
+version: 0.1.0
+publish_to: none
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+environment:
+  sdk: ^3.13.5
+dependencies:
+  flutter:
+    sdk: flutter
+  microflow_model:
+    path: ../microflow_model
+  microflow_runtime:
+    path: ../microflow_runtime
