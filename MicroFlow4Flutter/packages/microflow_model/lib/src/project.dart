@@ -200,6 +200,31 @@ class MFTokenSet {
   }
 }
 
+/// 页面模板（§4、§2.7）：项目模型中的版本化资源，记录一组带参数的图层树、
+/// 状态与绑定骨架。`create_page_from_template` 按参数实例化生成独立页面定义；
+/// 模板修订不追溯改写已创建页面。节点 id 与字符串属性值中的 `{{param}}`
+/// 在实例化时被参数值替换。
+class MFPageTemplate {
+  const MFPageTemplate({
+    required this.id,
+    required this.tree,
+    this.routePrefix = '/',
+    this.stateMembers = const [],
+    this.parameters = const {},
+    this.version = '1.0.0',
+  });
+
+  final String id;
+  final MFNode tree;
+  final String routePrefix;
+  final List<String> stateMembers;
+
+  /// 模板参数：参数名 -> 描述。实例化时必须提供全部声明参数，
+  /// 未声明的参数是错误（配置构造封闭集合，§2.7）。
+  final Map<String, String> parameters;
+  final String version;
+}
+
 /// Top-level project model: every tool and the runtime operate on this object.
 class MFProject {
   const MFProject({
@@ -211,6 +236,7 @@ class MFProject {
     this.tokens = const {},
     this.navigation = const MFNavigationSpec(),
     this.crossingList = const MFControlledCrossingList(),
+    this.pageTemplates = const {},
   });
 
   final MFManifest manifest;
@@ -223,6 +249,9 @@ class MFProject {
 
   /// Product-level controlled crossing list (§2.9, baseline 32).
   final MFControlledCrossingList crossingList;
+
+  /// Page templates (§4、§2.7): versioned resources for config construction.
+  final Map<String, MFPageTemplate> pageTemplates;
 
   MFPage? page(String id) => pages.fold(null, (r, p) => r == null && p.id == id ? p : r);
 

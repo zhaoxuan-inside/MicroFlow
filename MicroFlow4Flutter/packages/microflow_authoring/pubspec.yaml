@@ -1,0 +1,17 @@
+name: microflow_authoring
+description: >-
+  MicroFlow Frontend 上层工具接入面（§14、§19 阶段六、外部功能接入规范 §4）：
+  结构化命令（create_page / create_page_from_template / validate_project /
+  inspect_impact）、修改审计与可回滚修订、页面模板实例化。依赖 model 与
+  runtime 的公共 API，不做编辑器实现；命令产出的页面走同一静态校验门禁。
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.13.5
+dependencies:
+  microflow_model:
+    path: ../microflow_model
+  microflow_runtime:
+    path: ../microflow_runtime
+dev_dependencies:
+  flutter_lints: ^6.0.0

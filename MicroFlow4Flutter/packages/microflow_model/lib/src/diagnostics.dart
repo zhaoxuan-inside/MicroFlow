@@ -27,6 +27,7 @@ abstract final class MFCodes {
   static const unknownField = 'mf.schema.unknown-field';
   static const schemaDialectUnsupported = 'mf.schema.dialect-unsupported';
   static const schemaInlineLogic = 'mf.schema.inline-logic';
+  static const schemaTemplateParamInvalid = 'mf.schema.template-param-invalid';
 
   // Registration (§23).
   static const regUnregisteredRef = 'mf.reg.unregistered-ref';
@@ -49,6 +50,7 @@ abstract final class MFCodes {
   static const navUnknownTarget = 'mf.nav.unknown-target';
   static const navIsolatedPage = 'mf.nav.isolated-page';
   static const navEntryMissing = 'mf.nav.entry-missing';
+  static const routeDuplicate = 'mf.route.duplicate';
 
   // State / info contract (§2.8, §11).
   static const stateWritebackDenied = 'mf.state.writeback-denied';
@@ -99,6 +101,8 @@ Map<String, MFDiag> _buildRegistry() {
     const MFDiag(MFCodes.navUnknownTarget, '导航目标在导航图中不存在'),
     const MFDiag(MFCodes.navIsolatedPage, '存在不可达的孤立页面'),
     const MFDiag(MFCodes.navEntryMissing, '入口页面在导航图中缺失'),
+    const MFDiag(MFCodes.routeDuplicate, '页面 id 或路由重复（§9 路由唯一）'),
+    const MFDiag(MFCodes.schemaTemplateParamInvalid, '模板实例化参数缺失或未声明（§2.7）'),
     const MFDiag(MFCodes.stateWritebackDenied, '运行数据回写项目模型被拒绝'),
     const MFDiag(MFCodes.stateGhostDependency, 'consumes 不可解析到上游 provides（幽灵依赖）'),
     const MFDiag(MFCodes.stateProvidedInvalid, 'provides 形状不合法'),

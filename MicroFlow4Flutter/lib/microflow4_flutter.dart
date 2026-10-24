@@ -26,6 +26,9 @@ export 'package:microflow_observability/microflow_observability.dart';
 // Flutter Renderer 与应用入口。
 export 'package:microflow_renderer_flutter/microflow_renderer_flutter.dart';
 
+// 上层工具接入面（§14 结构化命令，阶段六）。
+export 'package:microflow_authoring/microflow_authoring.dart';
+
 import 'package:microflow_runtime/microflow_runtime.dart';
 
 import 'package:microflow_model/microflow_model.dart';

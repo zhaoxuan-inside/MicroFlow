@@ -1,3 +1,21 @@
+## 0.3.0
+
+* 新增 packages/microflow_authoring：§14 结构化命令面最小闭环
+  （create_page / create_page_from_template / connect_navigation /
+  validate_project / inspect_impact），候选项目过同一静态校验门禁，
+  修改审计与可回滚修订，页面模板参数化实例化（§4、§2.7）；
+* 模型新增：MFPageTemplate 页面模板、MFControlledCrossingList 受控交叉
+  清单（§2.9）、manifest 类型方言版本（§4.6）、诊断码 route.duplicate /
+  schema.template-param-invalid / schema.dialect-unsupported /
+  schema.inline-logic / exp.variant-out-of-scope；
+* 校验器新增：类型方言检查（基线 14）、结构树内联可执行逻辑拒绝
+  （基线 31 静态部分）、受控交叉清单门禁（基线 32 静态部分）、
+  consumes 可解析到上游容器 provides（基线 16 增强）；
+* 一致性基线机器可读化：docs/design/baselines.json 为 §44.3 投影，
+  tool/baseline_coverage.dart 生成覆盖表，守卫测试锁定基线引用与
+  §41 诊断码单一来源（修复未登记码 mf.reg.deprecated、mf.tele.schema-invalid）；
+* 总包再导出 authoring 模块。
+
 ## 0.2.0
 
 模块化重构：将框架实现拆分为 4 个可独立升级的子包，总包仅做装配：

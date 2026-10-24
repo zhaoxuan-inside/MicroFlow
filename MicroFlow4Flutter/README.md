@@ -12,7 +12,8 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
     ├── microflow_runtime          注册/静态校验/解释运行时/错误边界（§13.2、§23、§10、§18.1）
     │     ↓                    ↑
     ├── microflow_renderer_flutter     Flutter Tier A 渲染 + MicroFlowApp（§12、§13.3、§38）
-    └── microflow_observability        遥测信封/有界队列/实验冻结/Debug 会话（§24、§29、§31）
+    ├── microflow_observability        遥测信封/有界队列/实验冻结/Debug 会话（§24、§29、§31）
+    └── microflow_authoring            结构化命令/审计回滚/模板实例化（§14、§19 阶段六）
 ```
 
 模块化原则（两条硬约束）：
@@ -33,7 +34,8 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
 | microflow_runtime | 0.1.0 | `MFRegistry/MFResourceEntry`、`MFRuntime/MFPageInstance/MFFrozenContext/MFActionResult`、`MFValidator/MFValidationResult`、`MFStateStore`、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
 | microflow_observability | 0.1.0 | `MFEventEnvelope/MFTelemetryQueue/MFTelemetrySink/MFInMemorySink`、`MFStandardEvents`、`MFExperimentState/MFExperimentAssignment`、`MFDebugSession/MFDebugSnapshot` |
 | microflow_renderer_flutter | 0.1.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`、`resolveTokenColor` |
-| microflow4_flutter（总包） | 0.2.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配） |
+| microflow_authoring | 0.1.0 | `MFAuthoringSession`（`createPage/createPageFromTemplate/connectNavigation/validateProject/inspectImpact/undo`）、`MFCommandResult/MFRevision/MFImpactReport`（§14 命令面） |
+| microflow4_flutter（总包） | 0.3.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配） |
 
 ## 已实现能力（按 §38.2 分级如实声明）
 
@@ -44,6 +46,10 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
   标准运营事件族零埋点（`ops.page.viewed/left`、`ops.feature.used`）、
   实验分配校验冻结停用、Debug 权限门与快照屏蔽；接收端服务、实验平台、
   远程诊断仍由业务层/承载方实现（§27）。
+- **阶段六最小闭环（§14/§19）**：结构化命令 `create_page`、
+  `create_page_from_template`、`connect_navigation`、`validate_project`、
+  `inspect_impact`；候选项目过同一静态校验门禁，失败不改模型；
+  修改审计（前后摘要/影响对象/主体）与可回滚修订；页面模板参数化实例化。
 
 尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、完整样式片/主题
 覆盖链（§36.3–§36.6）、Tier B 全集、Business Fact 可靠通道、增量编译与
@@ -73,7 +79,7 @@ dart tool/baseline_coverage.dart
 | 10 | 发布快照可重复构建、可回滚，诊断码可用注册表版本解释 | 未覆盖 | — |
 | 11 | 追踪传播携带外部运行引用；未获得运行引用的确认进入 unknown | 未覆盖 | — |
 | 12 | 页面未声明图层树时以隐式 ContentLayer 校验与渲染 | 未覆盖 | — |
-| 13 | 纯配置创建引用未注册资源时校验失败；通过后以新发布快照运行 | 已覆盖 | `注册/未注册引用检查（基线 13、15）`<br>`未注册类型引用是静态错误（基线 13）` |
+| 13 | 纯配置创建引用未注册资源时校验失败；通过后以新发布快照运行 | 已覆盖 | `注册/未注册引用检查（基线 13、15）`<br>`未注册类型引用是静态错误（基线 13）`<br>`create_page 纯配置构造：门禁拒绝未注册引用且项目不变（基线 13、§18.3）` |
 | 14 | manifest 类型方言版本可解析快照内全部 Schema 引用；不满足时构建失败 | 已覆盖 | `manifest 类型方言版本不受支持时构建失败（基线 14）` |
 | 15 | 统一注册 primitive/adapter 后纯配置构建新页面通过校验并正确渲染 | 已覆盖 | `注册/未注册引用检查（基线 13、15）` |
 | 16 | 容器信息契约：consumes 不可解析是静态错误；provides 变更可经影响分析命中全部消费容器 | 部分覆盖 | `容器信息契约：consumes 解析到上游 provides；provides 变更命中影响分析（基线 16 部分）` |

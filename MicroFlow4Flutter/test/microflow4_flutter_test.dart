@@ -539,6 +539,163 @@ void main() {
     expect(outOfScope.ok, isFalse);
   });
 
+  test('create_page 纯配置构造：门禁拒绝未注册引用且项目不变（基线 13、§18.3）', () {
+    final session = MFAuthoringSession(project: demoProject(), registry: demoRegistry());
+    final before = session.project;
+    // 引用未注册资源：门禁失败，项目保持原样（§2.7 不存在免门禁通道）。
+    final rejected = session.createPage(
+      pageId: 'bad-page',
+      route: '/bad',
+      tree: const MFNode(id: 'root', type: 'NoSuchWidget'),
+    );
+    expect(rejected.ok, isFalse);
+    expect(rejected.diagnostics.any((d) => d.code == 'mf.reg.unregistered-ref'), isTrue);
+    expect(identical(session.project, before), isTrue, reason: '门禁失败不产生隐式状态');
+    expect(session.revisions, isEmpty);
+    // 重复页面 id / 路由是静态错误（§9）。
+    final dup = session.createPage(
+      pageId: 'notes-page',
+      route: '/other',
+      tree: const MFNode(id: 'root', type: 'Stack'),
+    );
+    expect(dup.diagnostics.any((d) => d.code == 'mf.route.duplicate'), isTrue);
+    final dupRoute = session.createPage(
+      pageId: 'another',
+      route: '/notes',
+      tree: const MFNode(id: 'root', type: 'Stack'),
+    );
+    expect(dupRoute.diagnostics.any((d) => d.code == 'mf.route.duplicate'), isTrue);
+    // 引用已注册资源但未声明导航：非入口页面被孤立页面门禁拒绝（§9）。
+    final isolated = session.createPage(
+      pageId: 'about-page',
+      route: '/about',
+      tree: const MFNode(id: 'root', type: 'Stack'),
+    );
+    expect(isolated.ok, isFalse);
+    expect(isolated.diagnostics.any((d) => d.code == 'mf.nav.isolated-page'), isTrue);
+    // 原子声明导航来源：通过门禁，产生修订与前后摘要（§14）。
+    final ok = session.createPage(
+      pageId: 'about-page',
+      route: '/about',
+      tree: const MFNode(id: 'root', type: 'Stack', children: [MFNode(id: 't', type: 'Text', props: {'text': 'hi'})]),
+      navigationFrom: 'notes-page',
+    );
+    expect(ok.ok, isTrue, reason: '注册资源可纯配置构造（§2.7）');
+    expect(ok.revision, isNotNull);
+    expect(ok.beforeSummary, isNot(equals(ok.afterSummary)));
+    expect(session.project.page('about-page'), isNotNull);
+    // connect_navigation：在既有页面间声明导航边（§14）。
+    session.createPage(
+      pageId: 'p4',
+      route: '/p4',
+      tree: const MFNode(id: 'root', type: 'Stack'),
+      navigationFrom: 'notes-page',
+    );
+    final connect = session.connectNavigation(from: 'about-page', to: 'p4');
+    expect(connect.ok, isTrue);
+    final dangling = session.connectNavigation(from: 'about-page', to: 'ghost-page');
+    expect(dangling.diagnostics.any((d) => d.code == 'mf.ref.dangling'), isTrue);
+    expect(session.revisions, isNotEmpty);
+  });
+
+  test('create_page_from_template：参数实例化为独立页面，模板不被追溯改写（§2.7）', () {
+    const template = MFPageTemplate(
+      id: 'tpl-detail',
+      routePrefix: '/detail/',
+      tree: MFNode(
+        id: 'root-{{entityId}}',
+        type: 'Stack',
+        children: [
+          MFNode(id: 'title', type: 'Text', props: {'text': '{{entityName}}'}),
+        ],
+      ),
+      stateMembers: ['dirty'],
+      parameters: {'entityId': '实体标识', 'entityName': '实体名称'},
+    );
+    final project = MFProject(
+      manifest: demoProject().manifest,
+      pages: demoProject().pages,
+      i18n: demoProject().i18n,
+      pageTemplates: const {'tpl-detail': template},
+    );
+    final session = MFAuthoringSession(project: project, registry: demoRegistry());
+    // 缺参 / 未声明参数是静态错误（§2.7 封闭集合）。
+    final missing = session.createPageFromTemplate(templateId: 'tpl-detail', pageId: 'd1', params: {'entityId': 'a'});
+    expect(missing.diagnostics.any((d) => d.code == 'mf.schema.template-param-invalid'), isTrue);
+    final extra = session.createPageFromTemplate(
+        templateId: 'tpl-detail', pageId: 'd1', params: {'entityId': 'a', 'entityName': 'x', 'hax': 'y'});
+    expect(extra.diagnostics.any((d) => d.code == 'mf.schema.unknown-field'), isTrue);
+    // 正确实例化：参数替换、独立定义、路由来自模板前缀。
+    final ok = session.createPageFromTemplate(
+        templateId: 'tpl-detail', pageId: 'detail-a',
+        params: {'entityId': 'a', 'entityName': 'Alpha'}, navigationFrom: 'notes-page');
+    expect(ok.ok, isTrue);
+    final page = session.project.page('detail-a')!;
+    expect(page.route, '/detail/detail-a');    expect(page.stateMembers, ['dirty']);
+    expect(page.tree.id, 'root-a', reason: '节点 id 中 {{param}} 被替换');
+    expect((page.tree.children.single.props['text'] as String), 'Alpha');
+    // 模板本身不被追溯改写：骨架仍保留占位符，实例是独立对象（§2.6）。
+    expect(template.tree.id, 'root-{{entityId}}');
+    expect(identical(page.tree, template.tree), isFalse);
+  });
+
+  test('validate_project 与 inspect_impact：结构化查询与影响分析（§14、§18.3）', () {
+    final session = MFAuthoringSession(project: demoProject(), registry: demoRegistry());
+    expect(session.validateProject().ok, isTrue);
+    final impact = session.inspectImpact('Stack');
+    expect(impact.usedBy, contains('notes-page'), reason: '反向索引命中引用页面（§4.3）');
+    expect(session.inspectImpact('notes-page').referencesOf, isNotEmpty);
+  });
+
+  test('undo 可回滚最近一次修订，审计记录保留（§14）', () {
+    final session = MFAuthoringSession(project: demoProject(), registry: demoRegistry());
+    final before = session.project;
+    expect(
+      session
+          .createPage(
+            pageId: 'p2',
+            route: '/p2',
+            tree: const MFNode(id: 'r', type: 'Stack'),
+            navigationFrom: 'notes-page',
+          )
+          .ok,
+      isTrue,
+    );
+    expect(session.canUndo, isTrue);
+    final afterUndo = session.undo();
+    expect(identical(afterUndo, before), isTrue, reason: '回滚恢复修订前模型');
+    expect(session.project.page('p2'), isNull);
+    expect(session.revisions, hasLength(1), reason: '审计记录不删除（§32）');
+    expect(session.canUndo, isFalse);
+    // 回滚后可重新创建同名页面。
+    expect(
+      session
+          .createPage(
+            pageId: 'p2',
+            route: '/p2',
+            tree: const MFNode(id: 'r', type: 'Stack'),
+            navigationFrom: 'notes-page',
+          )
+          .ok,
+      isTrue,
+    );
+  });
+
+  test('§18.3：命令执行后对象 ID 不丢失，未修改页面无差异', () {
+    final session = MFAuthoringSession(project: demoProject(), registry: demoRegistry());
+    final originalNotes = session.project.page('notes-page');
+    session.createPage(
+      pageId: 'p3',
+      route: '/p3',
+      tree: const MFNode(id: 'r', type: 'Stack'),
+      navigationFrom: 'notes-page',
+    );
+    final currentNotes = session.project.page('notes-page');
+    expect(identical(originalNotes, currentNotes), isTrue,
+        reason: '未修改页面复用同一不可变对象（无无关差异）');
+    expect(currentNotes!.tree.find('title'), isNotNull, reason: '对象 ID 不丢失');
+  });
+
   test('Tier A 元组件集完整性（§38.1）', () {
     final contracts = {
       for (final e in demoRegistry().all()) e.id: e.contract,

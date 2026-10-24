@@ -44,7 +44,14 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.2.0"
+    version: "0.3.0"
+  microflow_authoring:
+    dependency: transitive
+    description:
+      path: "../packages/microflow_authoring"
+      relative: true
+    source: path
+    version: "0.1.0"
   microflow_model:
     dependency: transitive
     description:
