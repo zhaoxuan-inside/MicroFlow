@@ -198,6 +198,7 @@ class MFBinding {
     this.policy = MFPolicy.undeclared,
     this.errorBoundary,
     this.onError,
+    this.findings = const [],
   });
 
   final String id;
@@ -220,6 +221,22 @@ class MFBinding {
   /// Optional state action executed on error (declared propagation, §37.4);
   /// undeclared error propagation is a static error.
   final MFAction? onError;
+
+  /// findings 注记引用（§43.3）：见 [MFPage.findings]（§43.3「页面、组件和
+  /// 交互可携带 findings 引用」，基线 17）。
+  final List<String> findings;
+
+  /// 派生候选绑定（findings 注记登记用，§43.3）。
+  MFBinding copyWith({List<String>? findings}) => MFBinding(
+        id: id,
+        on: on,
+        guard: guard,
+        actions: actions,
+        policy: policy,
+        errorBoundary: errorBoundary,
+        onError: onError,
+        findings: findings ?? this.findings,
+      );
 }
 
 String? mfErrorRefToString(Object? v) => v == null ? null : '$v';

@@ -21,6 +21,10 @@ class MFValidationResult {
 
   /// §4.3 可追踪引用的反向索引：resource -> 影响对象（used_by）。
   final ReferenceIndex index = ReferenceIndex();
+
+  /// §43.3 findings 校验报告：本次校验显式列出全部 findings 注记及其目标，
+  /// 供回归基线与下一版修订消费（基线 17）。
+  final List<Map<String, String?>> findingsReport = [];
 }
 
 class MFValidator {
@@ -94,12 +98,101 @@ class MFValidator {
     for (final map in project.bindingMaps.values) {
       _validateBindingMap(map, diags);
     }
+    _validateBindings(diags);
     diags.addAll(registry.deprecationWarnings());
     _validateConsumableDependencies(diags);
     _validateStyles(diags);
     _validateLayout(diags);
     _validateCrossing(diags);
+    _validateRecovery(diags);
+    _validateTelemetryAnnotations(diags);
+    _validateFindings(diags, result);
     return result;
+  }
+
+  /// Recovery contract gate (§16.1): `unknown_side_effects.auto_retry` is
+  /// pinned false (baseline 27); declaring true fails the build.
+  void _validateRecovery(List<MFDiag> diags) {
+    for (final c in project.recoveryContracts.values) {
+      if (c.unknownSideEffectsAutoRetry) {
+        diags.add(MFDiag(MFCodes.buildRecoveryAutoRetry, '恢复契约 ${c.id} 声明 auto_retry=true（§16.1 固定 false，基线 27）'));
+      }
+    }
+  }
+
+  /// 采集注记静态校验（§24.7）：引用的事件必须已登记（标准运营事件族或
+  /// diag. 诊断命名），隐私分类与采样策略必须通过检查；违例是静态错误
+  /// （基线 8 的静态面）。
+  void _validateTelemetryAnnotations(List<MFDiag> diags) {
+    for (final entry in registry.all()) {
+      final a = entry.contract.telemetry;
+      if (a == null) continue;
+      for (final e in a.events.entries) {
+        final event = e.value;
+        // 已登记事件：标准运营事件族（§24.2）、ops./diag. 命名空间下的产品
+        // 登记事件（§24.7 示例口径，§41.1 命名空间纪律）。
+        final registered = MFStandardEvents.all.contains(event) ||
+            event.startsWith('ops.') ||
+            event.startsWith('diag.');
+        if (!registered) {
+          diags.add(MFDiag(MFCodes.teleAnnotationInvalid, '资源 ${entry.id} 注记触点 ${e.key} 引用未登记事件 $event（§24.7）'));
+        }
+      }
+      if (!mfAllowedPrivacyClasses.contains(a.privacyClass)) {
+        diags.add(MFDiag(MFCodes.teleAnnotationInvalid, '资源 ${entry.id} 注记隐私分类 ${a.privacyClass} 非法（§24.2）'));
+      }
+      final r = a.samplingRatio;
+      if (r != null && (r <= 0 || r > 1)) {
+        diags.add(MFDiag(MFCodes.teleAnnotationInvalid, '资源 ${entry.id} 注记采样比例 $r 非法（应为 (0,1]）'));
+      }
+    }
+  }
+
+  /// findings 回流门禁（§43.3，基线 17）：结构化登记、引用可解析、
+  /// regression-key 必须绑定可执行校验；自由文本替代（未登记引用）是静态
+  /// 错误。全部通过后在校验报告中显式列出（回归基线消费面）。
+  void _validateFindings(List<MFDiag> diags, MFValidationResult result) {
+    const findingTypes = {'bug-cluster', 'experiment-conclusion', 'ops-alert', 'regression-key'};
+    final bindingIds = <String>{for (final m in project.bindingMaps.values) for (final b in m.bindings) b.id};
+    void checkRefs(String owner, List<String> refs) {
+      for (final id in refs) {
+        if (!project.findings.containsKey(id)) {
+          diags.add(MFDiag(MFCodes.refDangling, '$owner 携带的 findings 引用 $id 未登记（§43.3，自由文本替代非法）'));
+        }
+      }
+    }
+
+    for (final page in project.pages) {
+      checkRefs('页面 ${page.id}', page.findings);
+    }
+    for (final comp in project.components.values) {
+      checkRefs('组件 ${comp.id}', comp.findings);
+    }
+    for (final map in project.bindingMaps.values) {
+      for (final b in map.bindings) {
+        checkRefs('绑定 ${b.id}', b.findings);
+      }
+    }
+    for (final f in project.findings.values) {
+      if (!findingTypes.contains(f.findingType)) {
+        diags.add(MFDiag(MFCodes.regFindingInvalid, 'finding ${f.findingId} 类型 ${f.findingType} 非法（§43.3）'));
+      }
+      if (f.findingType == 'regression-key' && (f.checkRef == null || f.checkRef!.isEmpty)) {
+        diags.add(MFDiag(MFCodes.regFindingInvalid, 'finding ${f.findingId} 为 regression-key 但未绑定可执行校验（§43.3）'));
+      }
+      final resolvable = project.page(f.targetRef) != null ||
+          project.components.containsKey(f.targetRef) ||
+          bindingIds.contains(f.targetRef);
+      if (!resolvable) {
+        diags.add(MFDiag(MFCodes.refDangling, 'finding ${f.findingId} 的 target_ref ${f.targetRef} 不可解析（§43.3）'));
+      }
+      result.findingsReport.add({
+        'finding': f.findingId,
+        'finding_type': f.findingType,
+        'target': f.targetRef,
+        'check_ref': f.checkRef,
+      });
+    }
   }
 
   /// Type dialect (§4.6, baseline 14): the manifest dialect must be one this
@@ -180,7 +273,6 @@ class MFValidator {
     for (final node in page.tree.flatten()) {
       result.index.record(page.id, node.type);
     }
-    _validateBindingsFor(page, diags);
   }
 
   void _validateTree(MFNode tree, String ownerId, List<MFDiag> diags, MFValidationResult result) {
@@ -242,7 +334,23 @@ class MFValidator {
     }
   }
 
-  void _validateBindingsFor(MFPage page, List<MFDiag> diags) {
+  /// 绑定图校验（§39.3）：绑定锚点是跨对象键（§39），解析范围是全项目
+  /// 页面树与组件树——与运行时 dispatchEvent 的全局解析一致；不逐页重复
+  /// 检查。状态成员引用按锚点所属页面校验。
+  void _validateBindings(List<MFDiag> diags) {
+    final nodes = <String, MFNode>{};
+    final ownerPage = <String, String>{};
+    for (final p in project.pages) {
+      for (final n in p.tree.flatten()) {
+        nodes[n.id] = n;
+        ownerPage[n.id] = p.id;
+      }
+    }
+    for (final c in project.components.values) {
+      for (final n in c.tree.flatten()) {
+        nodes.putIfAbsent(n.id, () => n);
+      }
+    }
     for (final map in project.bindingMaps.values) {
       for (final binding in map.bindings) {
         final anchor = binding.on.split('.');
@@ -252,9 +360,9 @@ class MFValidator {
         }
         final nodeId = anchor.sublist(0, anchor.length - 1).join('.');
         final event = anchor.last;
-        final node = page.tree.find(nodeId);
+        final node = nodes[nodeId];
         if (node == null) {
-          diags.add(MFDiag(MFCodes.bindingEventUnknown, '绑定 ${binding.id} 的目标节点 $nodeId 不存在（page=${page.id}）'));
+          diags.add(MFDiag(MFCodes.bindingEventUnknown, '绑定 ${binding.id} 的目标节点 $nodeId 不存在'));
           continue;
         }
         final contract = _contractOf(node.type);
@@ -264,6 +372,10 @@ class MFValidator {
         if (binding.policy == MFPolicy.undeclared) {
           diags.add(MFDiag(MFCodes.bindingNoConcurrency, '绑定 ${binding.id} 未声明并发策略，将拒绝重复触发（基线 26）'));
         }
+        final pageId = ownerPage[nodeId] ??
+            project.manifest.entryPage ??
+            (project.pages.isEmpty ? null : project.pages.first.id);
+        final page = pageId == null ? null : project.page(pageId);
         final refs = <String>[];
         if (binding.guard != null) {
           refs.addAll(binding.guard!.refPaths());
@@ -318,12 +430,12 @@ class MFValidator {
     }
   }
 
-  void _checkRefPath(String path, MFPage page, String bindingId, List<MFDiag> diags) {
+  void _checkRefPath(String path, MFPage? page, String bindingId, List<MFDiag> diags) {
     final parts = path.split('.');
     final root = parts.first;
     if (root == 'state') {
       final member = parts.length > 1 ? parts[1] : null;
-      if (member == null || member.isEmpty || !page.stateMembers.contains(member)) {
+      if (page != null && (member == null || member.isEmpty || !page.stateMembers.contains(member))) {
         diags.add(MFDiag(MFCodes.interactionUnknownMember, '页面状态未声明成员 $path（binding=$bindingId）'));
       }
       if (parts.length > 2) {

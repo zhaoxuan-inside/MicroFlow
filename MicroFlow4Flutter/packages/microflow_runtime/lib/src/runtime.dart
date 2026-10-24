@@ -16,6 +16,8 @@ import 'package:microflow_model/microflow_model.dart';
 
 import 'error_boundary.dart';
 import 'registry.dart';
+import 'business_fact.dart';
+import 'recovery.dart';
 import 'event_emission.dart';
 import 'expression.dart';
 import 'instance_ids.dart';
@@ -120,6 +122,15 @@ class MFRuntime {
   final String Function()? themeProvider;
 
   late final MFStateStore state = MFStateStore();
+
+  /// Business Fact channel (§24.1 第 4 类、§30.1): the runtime-declared
+  /// explicit submission entry — the only sanctioned bypass of the
+  /// zero-instrumentation rule (§24.7).
+  late final MFBusinessFactChannel facts = MFBusinessFactChannel(runtime: this);
+
+  /// Recovery executor (§16.1): collects and restores snapshots per the
+  /// declared Recovery Contract.
+  late final MFRecoveryExecutor recovery = MFRecoveryExecutor(runtime: this);
   List<MFPageInstance> stack = [];
   MFPageInstance? get current => stack.isEmpty ? null : stack.last;
 
@@ -132,6 +143,68 @@ class MFRuntime {
   MFValidationResult? lastValidation;
 
   final List<MFDiag> diagnostics = [];
+
+  /// Unknown-result ledger (§22.1, baseline 27): unknown side effects are
+  /// recorded once, queryable, never auto-retried.
+  final List<Map<String, Object?>> unknownResults = [];
+
+  /// External run references returned by the outer execution side (§24.8):
+  /// opaque ids recorded into diagnostics, events and debug snapshots; the
+  /// framework never interprets their internal structure.
+  final List<String> externalRunRefs = [];
+
+  /// Debug interception stream (§29): navigation/action/state events produced
+  /// at interception boundaries only — business code has no instrumentation.
+  final StreamController<Map<String, Object?>> _debugEvents =
+      StreamController<Map<String, Object?>>.broadcast();
+  Stream<Map<String, Object?>> get debugEvents => _debugEvents.stream;
+
+  /// Declared checkpoints (§29): bindings a debug session may pause at.
+  final Set<String> checkpoints = {};
+  final Map<String, Completer<void>> _checkpointGates = {};
+
+  void declareCheckpoints(Iterable<String> bindingIds) => checkpoints.addAll(bindingIds);
+
+  /// Arm a checkpoint: the next execution of [bindingId] suspends until
+  /// [resumeCheckpoint]. Authorization is checked by the observability debug
+  /// controller (§29 grants); the runtime only executes the gate.
+  void pauseAt(String bindingId) => _checkpointGates.putIfAbsent(bindingId, Completer<void>.new);
+
+  Future<void> resumeCheckpoint(String bindingId) async {
+    final gate = _checkpointGates.remove(bindingId);
+    if (gate != null && !gate.isCompleted) {
+      gate.complete();
+    }
+  }
+
+  /// Bindings with a run currently in flight (recovery snapshot
+  /// pending_actions, §16.1).
+  List<String> get inFlightBindings => [
+        for (final e in _inFlight.entries)
+          if (e.value) e.key,
+      ];
+
+  /// Record an unknown side effect once (§22.1): ledgered, queryable,
+  /// `auto_retry` pinned false (baseline 27).
+  void recordUnknown({required String call, required String requestId, required String reason}) {
+    unknownResults.add({
+      'call': call,
+      'action_request_id': requestId,
+      'reason': reason,
+      'state': 'unknown',
+      'auto_retry': false,
+      'at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  void _debug(String kind, Map<String, Object?> payload) {
+    if (!_debugEvents.hasListener) return;
+    _debugEvents.add({
+      'kind': kind,
+      'at': DateTime.now().toUtc().toIso8601String(),
+      ...payload,
+    });
+  }
 
   /// Expression evaluation exposed for the interpreter (structured subset,
   /// §37.2). Call expressions evaluate to unknown here; functions run via
@@ -220,6 +293,12 @@ class MFRuntime {
     _enterTimes[instance.id] = DateTime.now();
     stack.add(instance);
     _bump();
+    _debug('navigation', {
+      'page_definition_id': target.id,
+      'page_instance_id': instance.id,
+      'route': target.route,
+      'entry': stack.length == 1 ? 'external' : 'push',
+    });
     _emitStandard('ops.page.viewed', {
       'page_definition_id': target.id,
       'entry': stack.length == 1 ? 'external' : 'push',
@@ -253,6 +332,7 @@ class MFRuntime {
       'feature_ref': binding.id,
       'context_route': page.definition.route,
     }, page: page, interactionId: binding.id, actionRequestId: requestId);
+    _debug('action', {'binding_id': binding.id, 'action_request_id': requestId, 'route': page.definition.route});
 
     var ctx = _context(page, props);
     if (binding.guard != null) {
@@ -285,7 +365,15 @@ class MFRuntime {
     _superseded.remove(binding.id);
     _inFlight[binding.id] = true;
     try {
-      return await _runChain(binding, requestId, token, ctx);
+      // Checkpoint gate (§29): an armed checkpoint suspends the run before
+      // the action chain so the debug session can read a snapshot; resuming
+      // is explicit and idempotent.
+      final gate = _checkpointGates[binding.id];
+      if (gate != null) {
+        _debug('checkpoint', {'binding_id': binding.id, 'action_request_id': requestId});
+        await gate.future;
+      }
+      return await _runChain(binding, requestId, token, ctx, page);
     } finally {
       _inFlight[binding.id] = false;
     }
@@ -305,7 +393,8 @@ class MFRuntime {
         providedRoots: [ProvidedScope(id: page.definition.id, values: page.provided)],
       );
 
-  Future<MFActionResult> _runChain(MFBinding binding, String requestId, int token, EvalContext ctx) async {
+  Future<MFActionResult> _runChain(
+      MFBinding binding, String requestId, int token, EvalContext ctx, MFPageInstance page) async {
     final results = <String, Object?>{};
     Object? last;
     for (final action in binding.actions) {
@@ -313,7 +402,7 @@ class MFRuntime {
         // This run was superseded/cancelled (baseline 26).
         return MFActionResult(requestId: requestId, results: results);
       }
-      last = await _runAction(action, ctx);
+      last = await _runAction(action, ctx, page: page, requestId: requestId);
       final as = action is MFAdapterAction ? action.as : null;
       ctx = ctx.withPrev(as, last);
     }
@@ -321,7 +410,8 @@ class MFRuntime {
     return MFActionResult(requestId: requestId, results: results);
   }
 
-  Future<Object?> _runAction(MFAction action, EvalContext ctx) async {
+  Future<Object?> _runAction(MFAction action, EvalContext ctx,
+      {required MFPageInstance page, required String requestId}) async {
     switch (action) {
       case MFStateAction s:
         final value = _evaluator.eval(s.value, ctx);
@@ -329,6 +419,7 @@ class MFRuntime {
           throw StateError('component 状态只能写组件内部，不进入页面绑定（§6）');
         }
         state.writeDeep(s.scope == 'session' ? 'session' : 'page', s.target, value);
+        _debug('state', {'target': s.target, 'scope': s.scope, 'action_request_id': requestId});
         Future.microtask(_bump);
         return value;
       case MFEventAction e:
@@ -353,20 +444,64 @@ class MFRuntime {
         };
         if (impl == null) {
           diagnostics.add(MFDiag(MFCodes.capUnavailable, '动作调用 ${a.call} 无可用实现', stage: Stage.runtime));
+          recordUnknown(call: a.call, requestId: requestId, reason: 'unregistered-call');
           return const MFUnknownResult();
         }
         final args = {
           for (final e in a.arguments.entries) e.key: _evaluator.eval(e.value, ctx),
         };
+        // Trace propagation (§24.8, baseline 11): declared propagation gets a
+        // runtime-injected outbound context (trace_id, release_id, page
+        // instance id, action_request_id); business code and adapter
+        // implementations never construct trace identity themselves.
+        final trace = entry?.contract.trace;
+        if (trace != null && trace.direction != 'inbound') {
+          for (final carrier in trace.carrier) {
+            args[carrier] = {
+              'trace_id': ids.traceId,
+              'release_id': ids.releaseId,
+              'page_instance_id': page.id,
+              'action_request_id': requestId,
+            };
+          }
+        }
+        // Telemetry annotation (§24.7, baseline 8): annotated events go
+        // through the same full collection pipeline; privacy class and
+        // sampling come from the declaration, not from business code.
+        final annotation = entry?.contract.telemetry;
+        if (annotation != null) {
+          _emitAnnotated(annotation, 'entry', page, interactionId: a.call, actionRequestId: requestId);
+        }
         final int timeout = (impl as dynamic).timeoutMs as int? ?? a.timeoutMs;
         try {
           final result = await (impl as dynamic).fn(args).timeout(Duration(milliseconds: timeout));
-          return _validateOutput(a, entry, result);
+          if (annotation != null) {
+            _emitAnnotated(annotation, 'success', page, interactionId: a.call, actionRequestId: requestId);
+          }
+          // Opaque external run reference (§24.8): recorded, never
+          // interpreted; declared propagation without a returned reference is
+          // a recorded reason, not a call failure.
+          final runRef = result is Map ? result['external_run_ref'] : null;
+          if (runRef is String && runRef.isNotEmpty) {
+            externalRunRefs.add(runRef);
+          } else if (trace != null) {
+            diagnostics.add(MFDiag(MFCodes.teleTraceRefMissing, '动作 ${a.call} 声明了追踪传播但未返回运行引用',
+                stage: Stage.runtime, severity: Severity.info));
+          }
+          return _validateOutput(a, entry, result, requestId: requestId);
         } on TimeoutException {
-          // Timeout is not "not executed" (§10): unknown result surfaces.
+          // Timeout is not "not executed" (§10): unknown result surfaces,
+          // enters the ledger (§22.1, baseline 27) and is never auto-retried.
           diagnostics.add(MFDiag(MFCodes.dataTimeout, '动作 ${a.call} 超时，进入 unknown', stage: Stage.runtime));
+          recordUnknown(call: a.call, requestId: requestId, reason: 'timeout');
+          if (annotation != null) {
+            _emitAnnotated(annotation, 'failure', page, interactionId: a.call, actionRequestId: requestId);
+          }
           return const MFUnknownResult();
         } catch (err) {
+          if (annotation != null) {
+            _emitAnnotated(annotation, 'failure', page, interactionId: a.call, actionRequestId: requestId);
+          }
           return {'error': '$err'};
         }
       case MFUiAction u:
@@ -375,14 +510,17 @@ class MFRuntime {
   }
 
   /// Adapter output Schema validation (§40.3, baseline 4): mismatches are
-  /// typed errors, never silently truncated.
-  Object? _validateOutput(MFAdapterAction action, MFResourceEntry? entry, Object? result) {
+  /// typed errors, never silently truncated; the failed side effect enters
+  /// the unknown ledger (§22.1).
+  Object? _validateOutput(MFAdapterAction action, MFResourceEntry? entry, Object? result,
+      {required String requestId}) {
     final contract = entry?.contract;
     final outputSpec = contract?.props['output'];
     if (outputSpec == null) return result;
     final value = result is Map && result.containsKey('output') ? result['output'] : result;
     if (!outputSpec.check(value)) {
       diagnostics.add(MFDiag(MFCodes.dataOutputInvalid, '动作 ${action.call} 输出不符 output 声明', stage: Stage.runtime));
+      recordUnknown(call: action.call, requestId: requestId, reason: 'output-schema-mismatch');
       return const MFUnknownResult();
     }
     return result;
@@ -396,6 +534,7 @@ class MFRuntime {
     required MFPageInstance page,
     String? interactionId,
     String? actionRequestId,
+    String privacyClass = 'operational',
   }) {
     final raw = <String, Object?>{
       'event_name': event,
@@ -410,6 +549,7 @@ class MFRuntime {
       'trace_id': ids.traceId,
       'interaction_id': ?interactionId,
       'action_request_id': ?actionRequestId,
+      'privacy_class': privacyClass,
       'identity': {'user_ref': null, 'device_ref': null, 'exp_subject_ref': null},
       'experiment_assignments': page.frozen.experiments,
     };
@@ -418,6 +558,39 @@ class MFRuntime {
     } catch (_) {
       // Collection failures never interrupt core user flows (§24.2).
     }
+  }
+
+  /// Annotated touchpoint emission (§24.7, baseline 8): declared events go
+  /// through the same pipeline as standard events — Schema validation,
+  /// identity injection, queue and privacy checks all apply (no bypass for
+  /// declarative origins).
+  void _emitAnnotated(
+    MFTelemetryAnnotation annotation,
+    String touchpoint,
+    MFPageInstance page, {
+    String? interactionId,
+    String? actionRequestId,
+  }) {
+    final eventName = annotation.events[touchpoint];
+    if (eventName == null) return;
+    final ratio = annotation.samplingRatio;
+    if (ratio != null && !_sampled(ratio, actionRequestId ?? interactionId ?? eventName)) return;
+    _emitStandard(
+      eventName,
+      {'touchpoint': touchpoint, 'feature_ref': interactionId},
+      page: page,
+      interactionId: interactionId,
+      actionRequestId: actionRequestId,
+      privacyClass: annotation.privacyClass,
+    );
+  }
+
+  /// Deterministic ratio sampling keyed by request id (§24.7 sampling_policy
+  /// `kind: ratio`): the same request always gets the same decision.
+  bool _sampled(double ratio, String key) {
+    if (ratio >= 1) return true;
+    if (ratio <= 0) return false;
+    return key.hashCode.abs() % 10000 < (ratio * 10000).round();
   }
 
   /// Node-event dispatch (render -> runtime): resolves binding entries
@@ -448,7 +621,8 @@ class MFRuntime {
   }
 
   /// Debug contract surface output (§29): runtime context read; snapshots
-  /// are bounded and masked by the observability module.
+  /// are bounded and masked by the observability module. External run
+  /// references (§24.8) and unknown side effects are reachable here.
   Map<String, Object?> debugContext() => {
         'release_id': ids.releaseId,
         'renderer_version': ids.rendererVersion,
@@ -459,5 +633,7 @@ class MFRuntime {
         ],
         'session_state': state.snapshotSession(),
         'experiment_assignments': current?.frozen.experiments ?? const [],
+        'external_run_refs': List.of(externalRunRefs),
+        'unknown_results': List.of(unknownResults),
       };
 }

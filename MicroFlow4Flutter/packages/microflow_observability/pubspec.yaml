@@ -3,7 +3,7 @@ description: >-
   MicroFlow Frontend 观测模块（§24、§29、§31）：遥测信封与有界队列、标准运营
   事件族零埋点适配、实验分配冻结、Debug 会话契约。实现了 runtime 模块的
   MFEmissionSink 接口，业务层只依赖协议。
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 dev_dependencies:
   flutter_lints: ^6.0.0

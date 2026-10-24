@@ -5,6 +5,7 @@ library;
 import 'bindings.dart';
 import 'contracts.dart';
 import 'layout.dart';
+import 'recovery.dart';
 import 'styles.dart';
 import 'tree.dart';
 
@@ -100,6 +101,7 @@ class MFPage {
     this.pageOverrides = const {},
     this.layerRegions,
     this.conditionalLayouts = const [],
+    this.findings = const [],
   });
 
   final String id;
@@ -132,8 +134,30 @@ class MFPage {
   /// (baseline 20) — default plan is mandatory.
   final List<MFConditionalLayout> conditionalLayouts;
 
+  /// findings 注记引用（§43.3）：本资源携带的 finding id 列表；引用必须
+  /// 指向已登记的 finding 资源，自由文本替代是静态错误（基线 17）。
+  final List<String> findings;
+
   /// Whether the implicit ContentLayer applies (§7.5 / baseline 12).
   bool get hasExplicitLayers => layerRegions != null && layerRegions!.isNotEmpty;
+
+  /// 派生候选页面定义（findings 注记登记用，§43.3）。
+  MFPage copyWith({List<String>? findings}) => MFPage(
+        id: id,
+        route: route,
+        tree: tree,
+        stateMembers: stateMembers,
+        parameters: parameters,
+        onEnter: onEnter,
+        onLeave: onLeave,
+        errorBoundary: errorBoundary,
+        platformVariant: platformVariant,
+        info: info,
+        pageOverrides: pageOverrides,
+        layerRegions: layerRegions,
+        conditionalLayouts: conditionalLayouts,
+        findings: findings ?? this.findings,
+      );
 }
 
 /// Layer region constraint (§7): scroll/overlay relations and region banding
@@ -263,6 +287,41 @@ class MFPageTemplate {
   final String version;
 }
 
+/// findings 注记资源（§43.3 数据回流闭环）：外部结论以结构化 Schema 登记，
+/// 不得以自由文本替代；`regression-key` 类型必须绑定可执行的校验命令或
+/// 用例引用，防止同类问题回归。findings 是版本化资源：修订产生新版本，
+/// 历史 finding 保留墓碑（§22.3）。
+class MFFinding {
+  const MFFinding({
+    required this.findingId,
+    required this.findingType,
+    required this.targetRef,
+    this.schemaVersion = '1.0',
+    this.sourceRef = '',
+    this.summary = '',
+    this.createdBy = '',
+    this.checkRef,
+  });
+
+  /// 稳定 id（§4.2）。
+  final String findingId;
+
+  /// bug-cluster | experiment-conclusion | ops-alert | regression-key。
+  final String findingType;
+  final String schemaVersion;
+
+  /// 来源分析系统、方法与时间（§43.3）。
+  final String sourceRef;
+  final String summary;
+
+  /// 被注记的资源 id（页面、组件或交互绑定）。
+  final String targetRef;
+  final String createdBy;
+
+  /// regression-key 必填：可执行校验命令或用例引用。
+  final String? checkRef;
+}
+
 /// Top-level project model: every tool and the runtime operate on this object.
 class MFProject {
   const MFProject({
@@ -277,6 +336,8 @@ class MFProject {
     this.navigation = const MFNavigationSpec(),
     this.crossingList = const MFControlledCrossingList(),
     this.pageTemplates = const {},
+    this.findings = const {},
+    this.recoveryContracts = const {},
   });
 
   final MFManifest manifest;
@@ -294,6 +355,46 @@ class MFProject {
 
   /// Page templates (§4、§2.7): versioned resources for config construction.
   final Map<String, MFPageTemplate> pageTemplates;
+
+  /// findings 注记资源（§43.3，基线 17）：finding_id -> 资源。
+  final Map<String, MFFinding> findings;
+
+  /// Recovery Contract（§16.1）：id -> 契约资源；运行时按契约执行恢复，
+  /// 契约缺失时禁止恢复（§22.1）。
+  final Map<String, MFRecoveryContract> recoveryContracts;
+
+  /// 派生候选项目（§14 结构化命令的构造路径）：未给出的字段保持原引用
+  /// （不可变对象共享），给出则替换。
+  MFProject copyWith({
+    MFManifest? manifest,
+    List<MFPage>? pages,
+    Map<String, MFComponentDefinition>? components,
+    Map<String, MFBindingMap>? bindingMaps,
+    MFI18nCatalog? i18n,
+    Map<String, MFTokenSet>? tokens,
+    Map<String, MFStyleSheet>? styleSheets,
+    Map<String, MFTheme>? themes,
+    MFNavigationSpec? navigation,
+    MFControlledCrossingList? crossingList,
+    Map<String, MFPageTemplate>? pageTemplates,
+    Map<String, MFFinding>? findings,
+    Map<String, MFRecoveryContract>? recoveryContracts,
+  }) =>
+      MFProject(
+        manifest: manifest ?? this.manifest,
+        pages: pages ?? this.pages,
+        components: components ?? this.components,
+        bindingMaps: bindingMaps ?? this.bindingMaps,
+        i18n: i18n ?? this.i18n,
+        tokens: tokens ?? this.tokens,
+        styleSheets: styleSheets ?? this.styleSheets,
+        themes: themes ?? this.themes,
+        navigation: navigation ?? this.navigation,
+        crossingList: crossingList ?? this.crossingList,
+        pageTemplates: pageTemplates ?? this.pageTemplates,
+        findings: findings ?? this.findings,
+        recoveryContracts: recoveryContracts ?? this.recoveryContracts,
+      );
 
   MFPage? page(String id) => pages.fold(null, (r, p) => r == null && p.id == id ? p : r);
 
@@ -325,6 +426,7 @@ class MFComponentDefinition {
     required this.contract,
     this.version = '1.0.0',
     this.description = '',
+    this.findings = const [],
   });
 
   final String id;
@@ -337,7 +439,20 @@ class MFComponentDefinition {
   final String version;
   final String description;
 
+  /// findings 注记引用（§43.3）：见 [MFPage.findings]。
+  final List<String> findings;
+
   Iterable<MFNode> walkRaw() => tree.flatten();
+
+  /// 派生候选组件定义（findings 注记登记用，§43.3）。
+  MFComponentDefinition copyWith({List<String>? findings}) => MFComponentDefinition(
+        id: id,
+        tree: tree,
+        contract: contract,
+        version: version,
+        description: description,
+        findings: findings ?? this.findings,
+      );
 }
 
 /// Static impact-collector: records model-object references (§4.3).

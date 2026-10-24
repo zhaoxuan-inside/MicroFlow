@@ -2,7 +2,7 @@ name: microflow4_flutter
 description: >-
   MicroFlow Frontend 的 Flutter 实现总包：组合 model、runtime、observability 与
   renderer_flutter 四个模块。总包只做装配与再导出，模块可以独立升级。
-version: 0.4.0
+version: 0.5.0
 publish_to: none
 environment:
   sdk: ^3.13.5

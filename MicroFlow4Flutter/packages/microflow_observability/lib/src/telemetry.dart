@@ -12,24 +12,12 @@ import 'dart:async';
 import 'package:microflow_model/microflow_model.dart';
 import 'package:microflow_runtime/microflow_runtime.dart';
 
-/// Standard operational event families (§24.2, baseline 29).
-abstract final class MFStandardEvents {
-  static const pageViewed = 'ops.page.viewed';
-  static const pageLeft = 'ops.page.left';
-  static const featureUsed = 'ops.feature.used';
-  static const contentExposed = 'ops.content.exposed';
-  static const feedbackSubmitted = 'ops.feedback.submitted';
-  static const feedbackResolved = 'ops.feedback.resolved';
-  static const campaignAttributed = 'ops.campaign.attributed';
-
-  static const all = {
-    pageViewed, pageLeft, featureUsed, contentExposed, feedbackSubmitted, feedbackResolved, campaignAttributed,
-  };
-}
+// MFStandardEvents（§24.2 标准运营事件族）单一来源在模型层，这里保持再导出。
+export 'package:microflow_model/microflow_model.dart' show MFStandardEvents;
 
 const allowedEnvironments = {'dev', 'preview', 'production'};
 
-const allowedPrivacyClasses = {'operational', 'sensitive', 'restricted'};
+const allowedPrivacyClasses = mfAllowedPrivacyClasses;
 
 /// Event envelope (§24.2): machine-checkable Schema with identity fields
 /// separate from raw credentials (§4.4, §32).

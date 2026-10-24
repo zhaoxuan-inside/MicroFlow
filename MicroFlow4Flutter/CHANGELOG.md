@@ -1,3 +1,35 @@
+## 0.5.0
+
+M2（PLAN.md）：观测与恢复闭环 ——
+* packages/microflow_model 0.3.0：Recovery Contract Schema（§16.1）、findings
+  注记资源（§43.3，页面/组件/绑定可携带引用）、采集注记 MFTelemetryAnnotation
+  与追踪传播 MFTracePropagation 契约（§24.7/§24.8）、标准事件族单一来源
+  （events.dart）、隐私分类枚举收敛模型层；MFProject/MFPage/
+  MFComponentDefinition/MFBinding 增加 copyWith；诊断码新增 8 个
+  （build.recovery-auto-retry、state.snapshot-version-mismatch /
+  snapshot-expired / release-migration-missing、data.fact-duplicate、
+  tele.annotation-invalid / trace-ref-missing、reg.finding-invalid）。
+* packages/microflow_runtime 0.3.0：Recovery 执行器（§16.1：快照收集/
+  重校验/过期/显式迁移；auto_retry=false 强制、版本不匹配进错误边界，
+  基线 27）；Business Fact 通道（§24.1 第 4 类、§30.1：提交确认 + 去重
+  身份幂等 + 超时/缺运行引用进 unknown 可查询，基线 28）；追踪传播运行时
+  注入出站上下文并记录外部运行引用（§24.8，基线 11）；unknown 结果台账
+  （§22.1）；采集注记运行时零埋点发射、走完整校验管道（基线 8）；
+  validator 绑定锚点改为全局解析（与 dispatchEvent 一致，多页面项目不再
+  误报）+ Recovery/注记/findings 三道静态门禁；Debug 拦截事件流与检查点
+  挂起（§29）。
+* packages/microflow_observability 0.2.0：Telemetry Ingest 参考实现
+  （§30.1：批量/退避/断网缓存/event_id 去重/数据质量指标与缺口窗口）；
+  Query/Export 本地参考实现（§30.2 五协议：过滤/分页/分组、事件 Schema、
+  追踪汇集、游标导出与缺口区间声明、数据质量）；Debug 控制面（订阅事件流、
+  检查点暂停/继续、快照读取，逐 grant 授权）。
+* packages/microflow_renderer_flutter 0.3.0：mfLocalizePageMessage 提取
+  （§42.5，基线 5：回退链展示并上报缺失翻译，回退降级为 warning）。
+* packages/microflow_authoring 0.2.0：register_finding 命令（§43.3 回流
+  标准入口）；mutator 改用 copyWith，资源字段不再丢失。
+* 测试 test/baseline_m2_test.dart：基线 5、8、11、17、27、28 落入可执行
+  判据 + §29 控制面 + §30 口径一致性测试；覆盖 21/32 已覆盖 + 5 部分。
+
 ## 0.3.0
 
 * 新增 packages/microflow_authoring：§14 结构化命令面最小闭环

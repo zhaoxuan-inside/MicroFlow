@@ -141,21 +141,14 @@ class MFAuthoringSession {
           errorBoundary: errorBoundary,
           info: info,
         );
-        return MFProject(
-          manifest: base.manifest,
+        return base.copyWith(
           pages: [...base.pages, page],
-          components: base.components,
-          bindingMaps: base.bindingMaps,
-          i18n: base.i18n,
-          tokens: base.tokens,
           navigation: navigationFrom == null
-              ? base.navigation
+              ? null
               : MFNavigationSpec(
                   edges: [...base.navigation.edges, MFNavEdge(from: navigationFrom, to: pageId)],
                   fallback: base.navigation.fallback,
                 ),
-          crossingList: base.crossingList,
-          pageTemplates: base.pageTemplates,
         );
       },
       precheck: (base) => [
@@ -175,19 +168,11 @@ class MFAuthoringSession {
     return _execute(
       command: 'connect_navigation',
       targetId: '$from->$to',
-      mutate: (base) => MFProject(
-        manifest: base.manifest,
-        pages: base.pages,
-        components: base.components,
-        bindingMaps: base.bindingMaps,
-        i18n: base.i18n,
-        tokens: base.tokens,
+      mutate: (base) => base.copyWith(
         navigation: MFNavigationSpec(
           edges: [...base.navigation.edges, MFNavEdge(from: from, to: to, kind: kind)],
           fallback: base.navigation.fallback,
         ),
-        crossingList: base.crossingList,
-        pageTemplates: base.pageTemplates,
       ),
       precheck: (base) => [
         if (base.page(from) == null) MFDiag(MFCodes.refDangling, '导航来源页面 $from 不存在'),
@@ -247,6 +232,68 @@ class MFAuthoringSession {
       tree: tree,
       stateMembers: template.stateMembers,
       navigationFrom: navigationFrom,
+    );
+  }
+
+  /// `register_finding`（§43.3 数据回流闭环）：外部结论以结构化命令登记为
+  /// 版本化资源注记，登记时按 `finding_id` 引用，不得以自由文本替代。
+  /// target 资源（页面/组件/绑定）随后携带 findings 引用；登记走同一静态
+  /// 门禁——类型枚举、regression-key 必须绑定可执行校验、target 必须可解析
+  /// （基线 17）。回流是流程与来源标注，不自动修改模型（§43.3）。
+  MFCommandResult registerFinding({
+    required String findingId,
+    required String findingType,
+    required String targetRef,
+    String summary = '',
+    String sourceRef = '',
+    String? checkRef,
+    String schemaVersion = '1.0',
+  }) {
+    return _execute(
+      command: 'register_finding',
+      targetId: findingId,
+      mutate: (base) {
+        final finding = MFFinding(
+          findingId: findingId,
+          findingType: findingType,
+          targetRef: targetRef,
+          schemaVersion: schemaVersion,
+          sourceRef: sourceRef,
+          summary: summary,
+          createdBy: actor,
+          checkRef: checkRef,
+        );
+        final pages = [
+          for (final p in base.pages)
+            if (p.id == targetRef) p.copyWith(findings: [...p.findings, findingId]) else p,
+        ];
+        final components = <String, MFComponentDefinition>{
+          for (final e in base.components.entries)
+            e.key: e.value.id == targetRef ? e.value.copyWith(findings: [...e.value.findings, findingId]) : e.value,
+        };
+        final bindingMaps = <String, MFBindingMap>{
+          for (final e in base.bindingMaps.entries)
+            e.key: MFBindingMap(
+              id: e.value.id,
+              schemaVersion: e.value.schemaVersion,
+              syntaxVersion: e.value.syntaxVersion,
+              bindings: [
+                for (final b in e.value.bindings)
+                  if (b.id == targetRef) b.copyWith(findings: [...b.findings, findingId]) else b,
+              ],
+            ),
+        };
+        return base.copyWith(
+          pages: pages,
+          components: components,
+          bindingMaps: bindingMaps,
+          findings: {...base.findings, findingId: finding},
+        );
+      },
+      precheck: (base) => [
+        if (base.findings.containsKey(findingId))
+          MFDiag(MFCodes.regFindingInvalid, 'finding $findingId 已登记（§43.3 版本化资源：修订产生新版本，不重复登记）'),
+      ],
     );
   }
 
@@ -378,5 +425,6 @@ class MFAuthoringSession {
       'pages=[${p.pages.map((e) => e.id).join(',')}]'
       '|components=[${(p.components.keys.toList()..sort()).join(',')}]'
       '|bindings=[${(p.bindingMaps.keys.toList()..sort()).join(',')}]'
-      '|templates=[${(p.pageTemplates.keys.toList()..sort()).join(',')}]';
+      '|templates=[${(p.pageTemplates.keys.toList()..sort()).join(',')}]'
+      '|findings=[${(p.findings.keys.toList()..sort()).join(',')}]';
 }

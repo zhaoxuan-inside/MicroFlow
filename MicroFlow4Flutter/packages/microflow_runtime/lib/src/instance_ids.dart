@@ -9,7 +9,7 @@ class MFInstanceIdentifiers {
     required this.releaseId,
     required this.environment,
     this.rendererPackage = 'microflow4_flutter',
-    this.rendererVersion = '0.1.0',
+    this.rendererVersion = '0.2.0',
     String? sessionId,
     String? traceId,
   })  : sessionId = sessionId ?? _newId('ses'),

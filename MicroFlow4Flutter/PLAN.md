@@ -43,13 +43,13 @@ MicroFlow4Flutter/
 | Level 1 解释运行时 | 部分达到 | 页面实例/导航/状态层/绑定/并发策略/guard/unknown/错误边界；Tier A 渲染 |
 | Level 2 完整契约 | 协议面部分实现 | 遥测信封校验与有界队列、标准事件族零埋点（`ops.page.viewed/left`、`ops.feature.used`）、实验冻结/停用、Debug 权限门 |
 
-### 2.3 基线覆盖对照（§44.3，32 条；M1 后由 tool/baseline_coverage.dart 口径）
+### 2.3 基线覆盖对照（§44.3，32 条；M2 后由 tool/baseline_coverage.dart 口径）
 
 ```text
-已覆盖（测试通过）：1、2、3、4、7、12、13、14、15、18、19、20、21、26、27、29
+已覆盖（测试通过）：1、2、3、4、5、7、8、11、12、13、14、15、17、18、19、20、
+                  21、26、27、28、29
 部分覆盖：         16、22（§36.4 token 规则侧；§36.5 动效面未实现）、30、31、32
-协议已建未闭环：  5（回退已实现，镜像/伪本地化未建）、8、11、17
-未实现：          6、9、10、23、24、25、28
+未实现：          6、9、10、23、24、25
 ```
 
 ### 2.4 已识别债务
@@ -58,8 +58,9 @@ MicroFlow4Flutter/
 - D2：Tier B 六个元组件缺五个（Tabs/Drawer/Table/Split/Anchor）——M1 已交付
   Tabs/Drawer/Table（另含 Grid），余 Split/Anchor（M5）；
 - D3：编译模式与产物清单、Source Map、路由注入（§13.3 编译侧、§33 构建部署）；
-- D4：Recovery Contract Schema 已建，恢复/迁移执行器与迁移器登记未建（§16.1、§22.3）；
-- D5：Business Fact 提交确认/去重身份通道（§24.1 第 4 类、§30.1）；
+- D4：Recovery Contract Schema 已建，恢复/迁移执行器与迁移器登记未建
+  （§16.1、§22.3）——已随 M2 交付；
+- D5：Business Fact 提交确认/去重身份通道（§24.1 第 4 类、§30.1）——已随 M2 交付；
 - D6：增量构建与性能预算度量（§22.2 必报七指标管线）;
 - D7：受控交叉清单与三平面分离运行期判定（§2.9 静态面已建）。
 
@@ -101,7 +102,7 @@ M5 平台扩展与生态（Tier B 补齐 → ? 、Web 之外、Host 能力、AGE
 
 风险：§7.3 求解语义与 Flutter BoxConstraints 映射有边界；需在基线测试固定合成元组件度量，避免平台度量噪声。
 
-### M2 观测与恢复闭环（估计 2-3 周）
+### M2 观测与恢复闭环（估计 2-3 周）✅ 完成 (2026-10-24)
 
 目标：Level 2 的 Telemetry Ingest/Query、Recovery、Business Fact 与 Debug 达到测试可用。
 
@@ -114,6 +115,10 @@ M5 平台扩展与生态（Tier B 补齐 → ? 、Web 之外、Host 能力、AGE
 5. Debug（§29）：本地/预览两级可用（上下文读取、状态订阅、首个检查点）；生产受控诊断仅协议。
 
 验收：基线 4、5、8、11、17、27、28；丢失/回放数据的口径一致性在测试中固定。
+证据：`test/baseline_m2_test.dart`（基线 5/8/11/17/27/28 + §29 控制面 +
+§30 Ingest/Query 口径一致性）；Testable Ingest 参考实现与本地 Query/Export
+见 `packages/microflow_observability`；i18n 镜像/伪本地化（模块表 M2 行）
+未在本里程碑内，随 i18n 完整化另行登记。
 
 风险：恢复快照与实验冻结归属的组合（§24.5）——恢复继续使用原分配，本阶段以“显式声明允许重分浇”为唯一通道。
 

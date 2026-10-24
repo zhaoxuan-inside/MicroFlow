@@ -17,6 +17,36 @@ import 'package:microflow_runtime/microflow_runtime.dart';
 import 'interpreter.dart';
 import 'primitives.dart';
 
+/// i18n 解析（§42.5，基线 5）：message 经回退链解析展示；缺失翻译上报
+/// `mf.i18n.missing-translation` 并回退 messageId，不静默、不报错中断。
+String mfLocalizePageMessage({
+  required MFProject project,
+  required MFPageInstance instance,
+  required String messageId,
+  List<MFDiag>? diagnostics,
+}) {
+  final resolved = project.i18n.resolve(messageId, instance.frozen.locale);
+  final text = resolved.text;
+  if (text == null) {
+    diagnostics?.add(
+      MFDiag(MFCodes.i18nMissingTranslation, 'message $messageId 缺失翻译（locale=${instance.frozen.locale}）'),
+    );
+    return messageId;
+  }
+  if (resolved.fellBack) {
+    // 原始 locale 缺失、按回退链展示：同样上报缺失翻译（§42.5，基线 5），
+    // 但有回退文案可用，降级为 warning。
+    diagnostics?.add(
+      MFDiag(
+        MFCodes.i18nMissingTranslation,
+        'message $messageId 在 locale ${instance.frozen.locale} 缺失翻译，按回退链展示（§42.5）',
+        severity: Severity.warning,
+      ),
+    );
+  }
+  return text;
+}
+
 /// Run a MicroFlow project on Flutter.
 class MicroFlowApp extends StatefulWidget {
   const MicroFlowApp({
@@ -158,18 +188,13 @@ class _PageHost extends StatelessWidget {
     return null;
   }
 
-  String _localize(MFRuntime runtime, MFPageInstance page, String messageId, String locale) {
-    final resolved = runtime.project.i18n.resolve(messageId, page.frozen.locale);
-    final text = resolved.text;
-    if (text == null) {
-      // Missing translation is diagnosable, never silent (§42.5, baseline 5).
-      runtime.diagnostics.add(
-        MFDiag(MFCodes.i18nMissingTranslation, 'message $messageId 缺失翻译（locale=$locale）'),
+  String _localize(MFRuntime runtime, MFPageInstance page, String messageId, String locale) =>
+      mfLocalizePageMessage(
+        project: runtime.project,
+        instance: page,
+        messageId: messageId,
+        diagnostics: runtime.diagnostics,
       );
-      return messageId;
-    }
-    return text;
-  }
 
   Map<String, ComponentContract> _primitiveContracts(MFRuntime runtime) {
     final out = <String, ComponentContract>{};
