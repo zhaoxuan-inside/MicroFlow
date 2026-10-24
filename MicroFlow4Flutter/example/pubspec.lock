@@ -44,7 +44,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.3.0"
+    version: "0.4.0"
   microflow_authoring:
     dependency: transitive
     description:
@@ -58,7 +58,7 @@ packages:
       path: "../packages/microflow_model"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.2.0"
   microflow_observability:
     dependency: transitive
     description:
@@ -72,14 +72,14 @@ packages:
       path: "../packages/microflow_renderer_flutter"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.2.0"
   microflow_runtime:
     dependency: transitive
     description:
       path: "../packages/microflow_runtime"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.2.0"
   sky_engine:
     dependency: transitive
     description: flutter

@@ -30,18 +30,24 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
 
 | 模块 | 版本 | 公共 API（节选） |
 |---|---|---|
-| microflow_model | 0.1.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract/InfoContract/LayoutCapability`、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFDiag/MFCodes/mfDiagnosticRegistry` |
-| microflow_runtime | 0.1.0 | `MFRegistry/MFResourceEntry`、`MFRuntime/MFPageInstance/MFFrozenContext/MFActionResult`、`MFValidator/MFValidationResult`、`MFStateStore`、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
+| microflow_model | 0.2.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract/InfoContract/LayoutCapability`、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFTheme/MFStyleSheet/MFStyleResolver`（§36.3-§36.6）、`MFSelfConstraint/MFConditionalLayout`（§7.2-§7.4）、`MFDiag/MFCodes/mfDiagnosticRegistry` |
+| microflow_runtime | 0.2.0 | `MFRegistry/MFResourceEntry`、`MFRuntime/MFPageInstance/MFFrozenContext/MFActionResult`、`MFValidator/MFValidationResult`、`MFStateStore`、`MFLayoutSolver/staticLayoutChecks`（§7.3/§7.5）、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
 | microflow_observability | 0.1.0 | `MFEventEnvelope/MFTelemetryQueue/MFTelemetrySink/MFInMemorySink`、`MFStandardEvents`、`MFExperimentState/MFExperimentAssignment`、`MFDebugSession/MFDebugSnapshot` |
-| microflow_renderer_flutter | 0.1.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`、`resolveTokenColor` |
+| microflow_renderer_flutter | 0.2.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`（含双层主题切换面）、`mfFlutterRendererContract`（§12.1）、`resolveTokenColor` |
 | microflow_authoring | 0.1.0 | `MFAuthoringSession`（`createPage/createPageFromTemplate/connectNavigation/validateProject/inspectImpact/undo`）、`MFCommandResult/MFRevision/MFImpactReport`（§14 命令面） |
-| microflow4_flutter（总包） | 0.3.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配） |
+| microflow4_flutter（总包） | 0.4.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配 + themeProvider） |
 
 ## 已实现能力（按 §38.2 分级如实声明）
 
 - **Level 0 已实现**：项目模型 / 契约 / 静态校验器 / 诊断注册表 / i18n / Token；
+  主题（extends 重定向、完整性检查）、样式片（变体条件、承接链、字面量禁令）、
+  覆盖链（token < 组件默认样式片 < 页面覆盖 < 产品主题）、交互与绑定语法静态检查、
+  布局约束 Schema 与静态检查（§36、§37、§7.2-§7.5 静态面）；
 - **Level 1 已实现（解释模式）**：页面实例 / 导航 / 状态层 / 绑定映射 /
-  并发策略 / guard / 超时 unknown / 错误边界；Tier A 元组件渲染；
+  并发策略 / guard / 超时 unknown / 错误边界；Tier A 元组件渲染 + Tier B
+  Tabs/Drawer/Table/Grid；覆盖链按实例冻结主题渲染（基线 7）；§7.3 布局
+  求解为确定性纯函数基线（`MFLayoutSolver.solveStack`，尚未接入 Flutter
+  渲染路径——渲染走原生 Row/Column，求解语义由基线 18-21 固定）；
 - **Level 2 协议面已定义并部分实现**：遥测信封 Schema 校验与有界队列、
   标准运营事件族零埋点（`ops.page.viewed/left`、`ops.feature.used`）、
   实验分配校验冻结停用、Debug 权限门与快照屏蔽；接收端服务、实验平台、
@@ -51,9 +57,10 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
   `inspect_impact`；候选项目过同一静态校验门禁，失败不改模型；
   修改审计（前后摘要/影响对象/主体）与可回滚修订；页面模板参数化实例化。
 
-尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、完整样式片/主题
-覆盖链（§36.3–§36.6）、Tier B 全集、Business Fact 可靠通道、增量编译与
-性能预算度量管线（§22.2）。
+尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、Tier B
+Split/Anchor、§36.5 动效面、Recovery 执行器（§16.1）、Business Fact 可靠
+通道（§24.1 第 4 类）、Telemetry Ingest 参考实现与 Query/Export（§30）、
+增量编译与性能预算度量管线（§22.2）。
 
 ## 一致性基线覆盖（机器可读）
 
@@ -73,22 +80,22 @@ dart tool/baseline_coverage.dart
 | 4 | 输出 Schema 不匹配产生类型化错误，不静默截断 | 已覆盖 | `输出 Schema 不匹配产生类型化错误，不静默截断（基线 4）` |
 | 5 | 缺失翻译按回退链展示并上报 mf.i18n.missing-translation | 未覆盖 | — |
 | 6 | 注册实现与契约不符是运行错误并进入错误边界 | 未覆盖 | — |
-| 7 | locale/主题冻结：运行中切换只影响新建实例 | 已覆盖 | `实验冻结：停用不改写历史，运行实例读取冻结值（基线 7）` |
+| 7 | locale/主题冻结：运行中切换只影响新建实例 | 已覆盖 | `基线 7：locale/主题冻结——切换只影响新建实例`<br>`实验冻结：停用不改写历史，运行实例读取冻结值（基线 7）` |
 | 8 | 采集注记事件走完整校验管道，业务代码零埋点 | 未覆盖 | — |
 | 9 | 解释模式与编译模式对上述行为完全一致 | 未覆盖 | — |
 | 10 | 发布快照可重复构建、可回滚，诊断码可用注册表版本解释 | 未覆盖 | — |
 | 11 | 追踪传播携带外部运行引用；未获得运行引用的确认进入 unknown | 未覆盖 | — |
-| 12 | 页面未声明图层树时以隐式 ContentLayer 校验与渲染 | 未覆盖 | — |
+| 12 | 页面未声明图层树时以隐式 ContentLayer 校验与渲染 | 已覆盖 | `基线 12：隐式 ContentLayer 共存规则` |
 | 13 | 纯配置创建引用未注册资源时校验失败；通过后以新发布快照运行 | 已覆盖 | `注册/未注册引用检查（基线 13、15）`<br>`未注册类型引用是静态错误（基线 13）`<br>`create_page 纯配置构造：门禁拒绝未注册引用且项目不变（基线 13、§18.3）` |
 | 14 | manifest 类型方言版本可解析快照内全部 Schema 引用；不满足时构建失败 | 已覆盖 | `manifest 类型方言版本不受支持时构建失败（基线 14）` |
 | 15 | 统一注册 primitive/adapter 后纯配置构建新页面通过校验并正确渲染 | 已覆盖 | `注册/未注册引用检查（基线 13、15）` |
 | 16 | 容器信息契约：consumes 不可解析是静态错误；provides 变更可经影响分析命中全部消费容器 | 部分覆盖 | `容器信息契约：consumes 解析到上游 provides；provides 变更命中影响分析（基线 16 部分）` |
 | 17 | findings 按 schema 版本回流并可被回归基线消费；自由文本替代是静态错误 | 未覆盖 | — |
-| 18 | 布局求解确定性：同一约束输入产生相同规范化矩形集 | 未覆盖 | — |
-| 19 | 不可满足约束产生 mf.layout 静态错误并阻止构建 | 未覆盖 | — |
-| 20 | 条件布局命中声明方案；全不命中且无默认方案是静态错误 | 未覆盖 | — |
-| 21 | 平台不支持已引用布局能力时按声明降级并产生诊断 | 未覆盖 | — |
-| 22 | 动效只出现在已声明动效面；动效值只解析到 motion Token | 未覆盖 | — |
+| 18 | 布局求解确定性：同一约束输入产生相同规范化矩形集 | 已覆盖 | `基线 18：同一输入两次求解（等价解释/编译模式）产出相同规范化矩形集` |
+| 19 | 不可满足约束产生 mf.layout 静态错误并阻止构建 | 已覆盖 | `基线 19：同轴 fill 与 fixed 并存 → mf.layout.unsatisfiable；fixed 超出可用空间` |
+| 20 | 条件布局命中声明方案；全不命中且无默认方案是静态错误 | 已覆盖 | `基线 20：条件布局确定命中与默认方案；重复选择器 → ambiguous-scheme` |
+| 21 | 平台不支持已引用布局能力时按声明降级并产生诊断 | 已覆盖 | `基线 21：平台不支持能力需声明降级；声明后运行期记录不静默` |
+| 22 | 动效只出现在已声明动效面；动效值只解析到 motion Token | 部分覆盖 | `基线 22（部分）：样式片值只解析到 token，字面量静态拒绝（§36.4；§36.5 动效面未覆盖）` |
 | 23 | 减少动效偏好命中替代组时应用替代 Token 并记录 | 未覆盖 | — |
 | 24 | 性能预算超标时发布门禁失败并产生 mf.perf 诊断 | 未覆盖 | — |
 | 25 | 增量构建不重新生成无关页面，增量与全量产物一致 | 未覆盖 | — |
@@ -100,7 +107,7 @@ dart tool/baseline_coverage.dart
 | 31 | 三平面分离：内联可执行逻辑、配置携带代码/未验证数据、运行数据回写模型均被拒绝 | 部分覆盖 | `结构树属性内联可执行逻辑是静态错误（基线 31 部分）` |
 | 32 | 受控交叉：未登记入受控交叉清单的改写面被静态拒绝；已登记面随实例冻结 | 部分覆盖 | `受控交叉清单外的变体改写面被静态拒绝（基线 32 部分）` |
 
-覆盖汇总：11/32 条已覆盖，4 条部分覆盖（生成工具：`dart run tool/baseline_coverage.dart`，勿手工编辑本表）。
+覆盖汇总：16/32 条已覆盖，5 条部分覆盖（生成工具：`dart run tool/baseline_coverage.dart`，勿手工编辑本表）。
 
 ## 使用
 

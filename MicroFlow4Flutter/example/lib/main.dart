@@ -41,7 +41,10 @@ MFRegistry buildTierAExampleRegistry() {
 /// §44.2 规范性最小示例 “备忘（Notes）” 的 Flutter 解释运行版。
 ///
 /// 覆盖：备注（Notes）列表页 + 编辑页，注册宿主函数，模型组合组件，
-/// 数据动作（本地函数适配器）、绑定映射、i18n、采集注记语义由运行时零埋点产生。
+/// 数据动作（本地函数适配器）、绑定映射、i18n、采集注记语义由运行时零埋点产生；
+/// M1：双层主题（theme-light 默认 / theme-dark extends 重定向）经 AppBar
+/// 菜单切换——切换只影响新建实例（§36.3，基线 7），标题经样式片
+/// `style-title` 走覆盖链（token < 组件默认样式片 < 页面覆盖 < 产品主题，§36.6）。
 void main() {
   final registry = buildTierAExampleRegistry();
   final i18n = const MFI18nCatalog(
@@ -77,6 +80,7 @@ void main() {
       syntaxVersion: '1.0',
       targets: ['web'],
       entryPage: 'notes-page',
+      defaultTheme: 'theme-light',
       defaultLocale: 'zh-CN',
       supportedLocales: ['zh-CN', 'en'],
     ),
@@ -89,7 +93,7 @@ void main() {
           id: 'notes-root',
           type: 'Stack',
           children: [
-            MFNode(id: 'notes-title', type: 'Text', t: 'notes.title'),
+            MFNode(id: 'notes-title', type: 'Text', t: 'notes.title', style: 'style-title'),
             const MFNode(id: 'add-note', type: 'Button', props: {'label': '新建'}),
             const MFNode(id: 'note-item', type: 'Stack'),
           ],
@@ -105,7 +109,7 @@ void main() {
           id: 'editor-root',
           type: 'Stack',
           children: [
-            MFNode(id: 'editor-title', type: 'Text', t: 'editor.title'),
+            MFNode(id: 'editor-title', type: 'Text', t: 'editor.title', style: 'style-title'),
             const MFNode(id: 'save-note', type: 'Button'),
           ],
         ),
@@ -165,6 +169,40 @@ void main() {
       ),
     },
     i18n: i18n,
+    // 主题 Token（§36.2）：产品主题投影的语义值基础集。
+    tokens: const {
+      'theme-light': MFTokenSet(
+        id: 'theme-light',
+        tokens: {
+          'color.action': '#2563eb',
+          'color.bg.surface': '#ffffff',
+          'color.bg.inverse': '#111827',
+          'color.text.primary': '#111827',
+          'color.text.inverse': '#f9fafb',
+          'color.foreground': '#111827',
+          'color.background': '#ffffff',
+        },
+      ),
+    },
+    // 双层主题（§36.3）：theme-dark 经 extends 继承 light，仅重定向已有
+    // token（{"ref": ...}），重定向环是静态错误。
+    themes: const {
+      'theme-dark': MFTheme(
+        id: 'theme-dark',
+        extendsId: 'theme-light',
+        overrides: {
+          'color.foreground': {'ref': 'color.text.inverse'},
+          'color.background': {'ref': 'color.bg.inverse'},
+        },
+      ),
+    },
+    // 样式片（§36.4）：值只允许 token 引用，字面量是静态错误。
+    styleSheets: const {
+      'style-title': MFStyleSheet(
+        id: 'style-title',
+        base: {'foreground': 'color.foreground', 'background': 'color.background'},
+      ),
+    },
   );
 
   final result = MFValidator(
@@ -178,11 +216,28 @@ void main() {
     throw StateError('notes-demo 未通过静态检查');
   }
 
+  // 双层主题切换（§36.3，基线 7）：themeProvider 只在实例创建时读取，
+  // 切换后 replace 重建当前页——新实例带新 frozen 主题，旧实例不可改写。
+  final themeSelection = ValueNotifier<String>('theme-light');
   final fw = MicroFlowFramework.create(
     project: app,
     registry: registry,
     environment: 'preview',
     releaseId: 'notes-demo-r1',
+    themeProvider: () => themeSelection.value,
   );
-  runApp(MicroFlowApp(project: app, registry: registry, runtime: fw.runtime));
+  runApp(MicroFlowApp(
+    project: app,
+    registry: registry,
+    runtime: fw.runtime,
+    themeSelection: themeSelection,
+    themeNames: const ['theme-light', 'theme-dark'],
+    onThemeSelected: (themeId) {
+      themeSelection.value = themeId;
+      final current = fw.runtime.current;
+      if (current != null) {
+        fw.runtime.push(current.definition.id, kind: 'replace');
+      }
+    },
+  ));
 }

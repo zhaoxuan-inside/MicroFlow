@@ -4,6 +4,8 @@ library;
 
 import 'bindings.dart';
 import 'contracts.dart';
+import 'layout.dart';
+import 'styles.dart';
 import 'tree.dart';
 
 class MFManifest {
@@ -95,6 +97,9 @@ class MFPage {
     this.errorBoundary,
     this.platformVariant = const {},
     this.info = const InfoContract(),
+    this.pageOverrides = const {},
+    this.layerRegions,
+    this.conditionalLayouts = const [],
   });
 
   final String id;
@@ -114,6 +119,39 @@ class MFPage {
   final String? errorBoundary;
   final Map<String, String> platformVariant;
   final InfoContract info;
+
+  /// Page-level style overrides (§36.6 页面覆盖层)。
+  final Map<String, String> pageOverrides;
+
+  /// Declared layer regions (§7.1/§12): region constraint + subcomponents.
+  /// `null` = no explicit layer tree; the implicit ContentLayer rule
+  /// applies (§7.5, baseline 12).
+  final List<MFRegionConstraint>? layerRegions;
+
+  /// Conditional layout schemes (§7.4) for targets within the page
+  /// (baseline 20) — default plan is mandatory.
+  final List<MFConditionalLayout> conditionalLayouts;
+
+  /// Whether the implicit ContentLayer applies (§7.5 / baseline 12).
+  bool get hasExplicitLayers => layerRegions != null && layerRegions!.isNotEmpty;
+}
+
+/// Layer region constraint (§7): scroll/overlay relations and region banding
+/// expressed as a declarative mount point; children resolve inside it.
+class MFRegionConstraint {
+  const MFRegionConstraint({
+    required this.id,
+    this.region = 'content',
+    this.scroll = false,
+    this.overlies = const [],
+    this.constraint = const MFSelfConstraint(),
+  });
+
+  final String id;
+  final String region; // content | header | footer | overlay
+  final bool scroll;
+  final List<String> overlies; // ids this layer overlays (declared)
+  final MFSelfConstraint constraint;
 }
 
 /// Navigation graph (§9): nodes and edges derived from page routes; guards
@@ -234,6 +272,8 @@ class MFProject {
     this.bindingMaps = const {},
     this.i18n = const MFI18nCatalog(),
     this.tokens = const {},
+    this.styleSheets = const {},
+    this.themes = const {},
     this.navigation = const MFNavigationSpec(),
     this.crossingList = const MFControlledCrossingList(),
     this.pageTemplates = const {},
@@ -245,6 +285,8 @@ class MFProject {
   final Map<String, MFBindingMap> bindingMaps;
   final MFI18nCatalog i18n;
   final Map<String, MFTokenSet> tokens;
+  final Map<String, MFStyleSheet> styleSheets;
+  final Map<String, MFTheme> themes;
   final MFNavigationSpec navigation;
 
   /// Product-level controlled crossing list (§2.9, baseline 32).

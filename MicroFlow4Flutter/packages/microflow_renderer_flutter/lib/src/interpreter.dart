@@ -20,7 +20,7 @@ typedef MFTokenResolver = Object? Function(String tokenName);
 
 /// Interpreter configuration: localizer, token resolution and runtime.
 class MFInterpreter {
-  const MFInterpreter({
+  MFInterpreter({
     required this.runtime,
     required this.table,
     required this.localize,
@@ -32,6 +32,14 @@ class MFInterpreter {
   final MFPrimitiveTable table;
   final MFLocalizer localize;
   final MFTokenResolver resolveColor;
+
+  late final MFStyleResolver styleResolver = MFStyleResolver(
+    tokenSets: runtime.project.tokens,
+    styleSheets: runtime.project.styleSheets,
+    themes: runtime.project.themes,
+    defaultThemeId: runtime.project.manifest.defaultTheme ??
+        (runtime.project.tokens.keys.isEmpty ? 'theme-default' : runtime.project.tokens.keys.first),
+  );
 
   /// Contracts for primitives declared in the registry (not Dart widgets).
   final Map<String, ComponentContract> primitiveContracts;
@@ -65,6 +73,26 @@ class _NodeRenderer {
     for (final e in node.props.entries) {
       final expr = MFExpr.parse(e.value);
       evaluated[e.key] = interpreter.runtime.safeEval(expr, _ctx());
+    }
+
+    // Coverage chain (§36.6): `token < 组件默认样式片 < 页面覆盖 < 产品主题`.
+    // Node style sheets resolve per aspect against the instance's frozen
+    // theme (baseline 7: switching affects only new instances); resolved raw
+    // values merge into props so primitives can apply them without their own
+    // chain logic.
+    final styleId = node.style;
+    if (styleId != null) {
+      for (final aspect in const {'foreground', 'background'}) {
+        final r = interpreter.styleResolver.resolveNode(
+          aspect,
+          styleSheetId: styleId,
+          pageOverrides: instance.definition.pageOverrides,
+          themeId: instance.frozen.theme,
+        );
+        if (r.resolved) {
+          evaluated[aspect] = r.value;
+        }
+      }
     }
 
     final context = MFRenderContext(

@@ -11,6 +11,7 @@ library;
 import 'package:microflow_model/microflow_model.dart';
 
 import 'registry.dart';
+import 'layout_solver.dart';
 
 class MFValidationResult {
   MFValidationResult(this.diagnostics);
@@ -39,6 +40,46 @@ class MFValidator {
   /// controlled crossing list (§2.9, baseline 32) or validation fails.
   final List<MFCrossingEntry> variantRewrites;
 
+  /// 样式静态检查（§36.4/§36.8）：字面量禁令、承接链、主题完整性。
+  void _validateStyles(List<MFDiag> diags) {
+    diags.addAll(validateStyleSheets(project.styleSheets.values));
+    final referencedTokens = <String>{
+      for (final sheet in project.styleSheets.values) ...sheet.base.values,
+      for (final sheet in project.styleSheets.values)
+        for (final v in sheet.variants) ...v.set.values,
+    };
+    defaultThemeResolver().completenessDiagnostics(referencedTokens: referencedTokens).forEach(diags.add);
+  }
+
+  MFStyleResolver defaultThemeResolver() => MFStyleResolver(
+        tokenSets: Map.of(project.tokens),
+        styleSheets: Map.of(project.styleSheets),
+        themes: Map.of(project.themes),
+        defaultThemeId: project.manifest.defaultTheme ??
+            (project.tokens.keys.isEmpty ? 'theme-default' : project.tokens.keys.first),
+      );
+
+  /// 布局静态检查（§7.5，基线 19/20/21 静态面）并入启动门禁。
+  void _validateLayout(List<MFDiag> diags) {    final constraints = <MFDeclaredConstraint>[];
+    final conditionalLayouts = <MFConditionalLayout>[];
+    for (final page in project.pages) {
+      for (final r in page.layerRegions ?? const <MFRegionConstraint>[]) {
+        constraints.add(MFDeclaredConstraint(
+          ownerId: '${page.id}/${r.id}',
+          constraint: r.constraint,
+          capabilityId: r.region,
+          overlies: r.overlies,
+        ));
+      }
+      conditionalLayouts.addAll(page.conditionalLayouts);
+    }
+    diags.addAll(staticLayoutChecks(
+      constraints: constraints,
+      conditionalLayouts: conditionalLayouts,
+      targetProfiles: const [mfDefaultPlatformProfile],
+    ));
+  }
+
   MFValidationResult validate() {
     final diags = <MFDiag>[];
     final result = MFValidationResult(diags);
@@ -55,6 +96,8 @@ class MFValidator {
     }
     diags.addAll(registry.deprecationWarnings());
     _validateConsumableDependencies(diags);
+    _validateStyles(diags);
+    _validateLayout(diags);
     _validateCrossing(diags);
     return result;
   }

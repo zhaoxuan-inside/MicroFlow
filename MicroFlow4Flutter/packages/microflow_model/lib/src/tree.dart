@@ -5,6 +5,8 @@
 /// their declared surfaces. No executable logic is inlined (§2.9).
 library;
 
+import 'layout.dart';
+
 class MFNode {
   const MFNode({
     required this.id,
@@ -14,6 +16,8 @@ class MFNode {
     this.children = const [],
     this.slots = const {},
     this.t,
+    this.style,
+    this.constraints,
   });
 
   /// Node id, unique within its defining tree; used as binding event anchor
@@ -39,6 +43,14 @@ class MFNode {
   /// i18n message reference for text-bearing nodes (§42.2). `t` and a bound
   /// text value are mutually exclusive (§42.2 rule).
   final String? t;
+
+  /// Style sheet reference (§36.4). Literal aspects never appear here;
+  /// values resolve through the (§36.6) coverage chain.
+  final String? style;
+
+  /// Node self constraint (§7.2); `null` means hug both axes (default for
+  /// simple nodes) with no extra bounds.
+  final MFSelfConstraint? constraints;
 
   /// Depth-first search for a node by id within this subtree.
   MFNode? find(String nodeId) {

@@ -35,6 +35,20 @@ abstract final class MFCodes {
   static const regUnregisteredImpl = 'mf.reg.unregistered-impl';
   static const regDeprecated = 'mf.reg.deprecated';
 
+  // Layout (§7).
+  static const layoutUnsatisfiable = 'mf.layout.unsatisfiable';
+  static const layoutOverflow = 'mf.layout.overflow';
+  static const layoutAmbiguousScheme = 'mf.layout.ambiguous-scheme';
+  static const layoutDegraded = 'mf.layout.degraded';
+  static const layoutUndeclaredDegradation = 'mf.layout.undeclared-degradation';
+
+  // Style / theme (§36).
+  static const styleLiteralInSheet = 'mf.style.literal-in-sheet';
+  static const styleCycle = 'mf.style.cycle';
+  static const styleVariantAmbiguous = 'mf.style.variant-ambiguous';
+  static const styleFaceUndeclared = 'mf.style.face-undeclared';
+  static const themeIncomplete = 'mf.theme.incomplete';
+
   // Reference / binding (§4.3, §39).
   static const refDangling = 'mf.ref.dangling';
   static const bindingEventUnknown = 'mf.binding.event-unknown';
@@ -110,6 +124,16 @@ Map<String, MFDiag> _buildRegistry() {
     const MFDiag(MFCodes.dataTimeout, '适配器调用超时（不当作未执行）'),
     const MFDiag(MFCodes.i18nMissingTranslation, '缺失翻译，按回退链解析'),
     const MFDiag(MFCodes.i18nChannelConflict, '同一内容位同时声明 i18n 与内容资产'),
+    const MFDiag(MFCodes.layoutUnsatisfiable, '不可满足的布局约束（§7.3）'),
+    const MFDiag(MFCodes.layoutOverflow, '主轴内容溢出，记录溢出诊断'),
+    const MFDiag(MFCodes.layoutAmbiguousScheme, '条件布局存在重复条件且模糊命中（§7.4）'),
+    const MFDiag(MFCodes.layoutDegraded, '目标平台不支持该布局能力，按声明降级执行（基线 21）'),
+    const MFDiag(MFCodes.layoutUndeclaredDegradation, '平台能力不足且未声明降级，构建拒绝'),
+    const MFDiag(MFCodes.styleLiteralInSheet, '样式片使用字面量而非 token 引用（§36.4）'),
+    const MFDiag(MFCodes.styleCycle, '样式片承接链循环'),
+    const MFDiag(MFCodes.styleVariantAmbiguous, '样式片同选择器多 set 且顺序未声明'),
+    const MFDiag(MFCodes.styleFaceUndeclared, '节点引用了未声明的样式面'),
+    const MFDiag(MFCodes.themeIncomplete, '主题对被引用 token 解析不完整（§36.3）'),
     const MFDiag(MFCodes.teleManualStandardEvent, '业务代码手工上报标准事件族'),
     const MFDiag(MFCodes.teleQueueOverflow, '采集队列满载丢弃'),
     const MFDiag(MFCodes.teleSchemaInvalid, '事件信封 Schema 校验失败（§24.2）'),

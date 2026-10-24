@@ -52,6 +52,7 @@ class MicroFlowFramework {
     String environment = 'preview',
     String releaseId = 'release-local',
     MFTelemetrySink? telemetrySink,
+    String Function()? themeProvider,
   }) {
     final validation = MFValidator(project: project, registry: registry).validate();
     if (!validation.ok) {
@@ -71,6 +72,7 @@ class MicroFlowFramework {
       ),
       emissionSink: telemetry,
       experimentAssignments: experiment.frozenAssignments,
+      themeProvider: themeProvider,
     );
     return MicroFlowFramework._(runtime, telemetry, experiment);
   }

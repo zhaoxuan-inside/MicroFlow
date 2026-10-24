@@ -61,6 +61,9 @@ class MFPrimitiveTable {
   final Map<String, MFPrimitiveBuilder> _builders = {
     'Text': (ctx, view) => Text(
           (view.node.props['text'] as String?) ?? '',
+          style: view.node.props['foreground'] is String
+              ? TextStyle(color: resolveTokenColor(view.node.props['foreground']))
+              : null,
           textAlign: switch (view.node.props['align']) {
             'center' => TextAlign.center,
             'end' => TextAlign.end,
@@ -121,6 +124,39 @@ class MFPrimitiveTable {
         children: view.children,
       );
     },
+    'Tabs': (ctx, view) {
+      final labels = [for (final c in view.children) (c)];
+      return DefaultTabController(
+        length: labels.length.clamp(1, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TabBar(tabs: [for (int i = 0; i < labels.length.clamp(1, 8); i++) Tab(text: 't${i + 1}')]),
+            Expanded(child: TabBarView(children: [for (final w in labels) w])),
+          ],
+        ),
+      );
+    },
+    'Drawer': (ctx, view) {
+      final panelWidth = (view.node.props['width'] as num?)?.toDouble() ?? 240;
+      return Container(
+        width: panelWidth,
+        color: ctx.tokenColor('color.bg.surface'),
+        child: view.children.isEmpty ? const SizedBox() : view.children.first,
+      );
+    },
+    'Table': (ctx, view) {
+      final columns = (view.node.props['columns'] as num?)?.toInt() ?? 1;
+      final rows = [for (int i = 0; i < view.children.length; i += columns) view.children.sublist(i, (i + columns).clamp(0, view.children.length))];
+      return Table(
+        defaultColumnWidth: const FlexColumnWidth(),
+        border: TableBorder.all(color: ctx.tokenColor('color.border')),
+        children: [
+          for (final row in rows)
+            TableRow(children: [for (final cell in row) TableCell(child: Padding(padding: const EdgeInsets.all(4), child: cell))]),
+        ],
+      );
+    },
     'Grid': (ctx, view) {
       final columns = (view.node.props['columns'] as num?)?.toInt() ?? 2;
       return Wrap(
@@ -136,7 +172,9 @@ class MFPrimitiveTable {
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: ctx.tokenColor('color.bg.surface'),
+            color: view.node.props['background'] is String
+                ? resolveTokenColor(view.node.props['background'])
+                : ctx.tokenColor('color.bg.surface'),
             borderRadius: BorderRadius.circular(12),
           ),
           child: view.children.isEmpty ? const SizedBox() : view.children.first,

@@ -16,6 +16,31 @@
   §41 诊断码单一来源（修复未登记码 mf.reg.deprecated、mf.tele.schema-invalid）；
 * 总包再导出 authoring 模块。
 
+## 0.4.0
+
+M1（PLAN.md）：样式与布局完整化 ——
+* packages/microflow_model 0.2.0：新增 `styles.dart`（MFTheme extends 重定向、
+  MFStyleSheet 变体条件、覆盖链 MFOverrideTier、MFStyleResolver、
+  validateStyleSheets 字面量禁令）与 `layout.dart`（MFSelfConstraint、
+  MFConditionalLayout 默认方案必填）；MFCodes 并入 layout/style 区域码。
+* packages/microflow_runtime 0.2.0：`layout_solver.dart` —— §7.3 形式化求解
+  （solve → 规范化矩形集，hug/fill 分配与 mf.layout.overflow 诊断）、
+  staticLayoutChecks（同轴 fill+fixed、fixed 超界、覆盖环、模糊选择器、
+  未声明降级）；MFValidator 启动门禁并入布局与样式检查；
+  MFRuntime 增加 themeProvider（基线 7 切换只影响新建实例）。
+* packages/microflow_renderer_flutter 0.2.0：Tier B Tabs/Drawer/Table、
+  样式片 foreground/background 解析进渲染、mfFlutterRendererContract
+  （§12.1 Schema + validate）；
+  主题渲染闭环：MFStyleResolver 按实例冻结主题解析（`resolveNode/resolveSheet`
+  增加 themeId，页面覆盖值改为在生效主题内判定），MicroFlowApp 增加
+  themeSelection/themeNames 切换面与按选中主题推导种子色。
+* example：双层主题演示（theme-light 默认 + theme-dark extends 重定向），
+  标题经样式片 `style-title` 走覆盖链（§36.6），AppBar 菜单切换只影响新建实例
+  （PLAN M1 验收项）。
+* 测试 test/baseline_m1_test.dart：基线 7、12、18、19、20、21 落入可执行判据；
+  测试名统一为「基线 N」标记语法（18-21 此前不在覆盖工具扫描范围内）；
+  基线 22 如实标记「部分」（当前仅覆盖 §36.4 token 规则侧，§36.5 动效面未实现）。
+
 ## 0.2.0
 
 模块化重构：将框架实现拆分为 4 个可独立升级的子包，总包仅做装配：

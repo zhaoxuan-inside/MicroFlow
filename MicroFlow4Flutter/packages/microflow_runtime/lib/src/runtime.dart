@@ -92,11 +92,13 @@ class MFRuntime {
     required this.ids,
     required this.emissionSink,
     List<Map<String, Object?>> Function()? experimentAssignments,
+    String Function()? themeProvider,
     MFBoundaryHandler? boundaryHandler,
     this.configVersion = 'config-1',
     this.theme = 'theme-light',
   })  : assignmentsProvider =
             experimentAssignments ?? (experimentAssignments == null ? () => const [] : throw StateError('unreachable')),
+        themeProvider = themeProvider ?? (themeProvider == null ? () => theme : throw StateError('unreachable')),
         boundaryHandler = boundaryHandler ?? MFBoundaryHandler();
 
   final MFProject project;
@@ -111,6 +113,11 @@ class MFRuntime {
   MFBoundaryHandler boundaryHandler;
   final String configVersion;
   final String theme;
+
+  /// Theme selection for newly created instances (§36.3/§42.5, baseline 7):
+  /// switching only affects new instances, never silently rewrites running
+  /// ones — their frozen context keeps the selection recorded at creation.
+  final String Function()? themeProvider;
 
   late final MFStateStore state = MFStateStore();
   List<MFPageInstance> stack = [];
@@ -227,7 +234,7 @@ class MFRuntime {
   /// Freezing: config/theme/locale/experiment summary at instance creation.
   MFFrozenContext _freeze() => MFFrozenContext(
         configVersion: configVersion,
-        theme: theme,
+        theme: themeProvider != null ? themeProvider!() : theme,
         locale: project.manifest.defaultLocale,
         experiments: assignmentsProvider(),
       );
