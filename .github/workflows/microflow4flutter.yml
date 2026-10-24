@@ -1,0 +1,69 @@
+# MicroFlow4Flutter 各模块 CI 矩阵：flutter analyze + 总包 flutter test。
+#
+# 本机环境注意（见仓库文档）：本地运行需清空 http_proxy/https_proxy/all_proxy
+# （代理会劫持 flutter_tester 的 127.0.0.1 回环通信）并绕过损坏的 snap 包装器；
+# CI 使用官方 flutter-action，无此问题。
+name: microflow4flutter
+
+on:
+  push:
+    paths: ['MicroFlow4Flutter/**', '.github/workflows/microflow4flutter.yml']
+  pull_request:
+    paths: ['MicroFlow4Flutter/**', '.github/workflows/microflow4flutter.yml']
+
+env:
+  # 防御性清空代理（CI 环境通常无代理；保留以对齐本机口径）。
+  http_proxy: ''
+  https_proxy: ''
+  all_proxy: ''
+  no_proxy: '127.0.0.1,localhost'
+
+jobs:
+  analyze:
+    name: analyze ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - MicroFlow4Flutter
+          - MicroFlow4Flutter/packages/microflow_model
+          - MicroFlow4Flutter/packages/microflow_runtime
+          - MicroFlow4Flutter/packages/microflow_observability
+          - MicroFlow4Flutter/packages/microflow_renderer_flutter
+          - MicroFlow4Flutter/packages/microflow_authoring
+          - MicroFlow4Flutter/example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Pub get
+        working-directory: ${{ matrix.package }}
+        run: flutter pub get
+      - name: Analyze
+        working-directory: ${{ matrix.package }}
+        run: flutter analyze
+
+  test:
+    name: test（一致性基线 + 守卫）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Pub get
+        working-directory: MicroFlow4Flutter
+        run: flutter pub get
+      - name: flutter analyze（门禁）
+        working-directory: MicroFlow4Flutter
+        run: flutter analyze
+      - name: flutter test（基线 1/2/3/4/7/13/14/15/16/26/27/29/30/31/32 与守卫）
+        working-directory: MicroFlow4Flutter
+        run: flutter test
+      - name: 基线覆盖率工具自检（引用不存在的基线时退出码 1）
+        working-directory: MicroFlow4Flutter
+        run: dart tool/baseline_coverage.dart > /dev/null

@@ -8,6 +8,8 @@
 - [前端框架完整设计方案 v1.12](design/frontend-framework-design.md)：面向 Vibe Coding 的元组件、组件、图层、页面、产品模型，样式与主题模型、交互与绑定语法、绑定映射，以及编译器、运行时、Renderer 和发布边界；代码、数据、配置三平面分离（§2.9）与文案通道判定（§42.7）；框架不提供可视化编辑器，向上层工具提供编排接入协议。
 - [外部功能接入规范 v1.0](design/external-capability-integration-spec.md)：宿主实现（统一资源注册）、上层工具（结构化命令与项目模型读写）、平台服务（遥测/实验/Debug 契约）三类接入方的通道、交付物与验收清单；对前端设计方案接入面的操作化收敛，不引入新语义。
 
+机器可读资源：[一致性基线投影 v1.0](design/baselines.json) —— §44.3 全部 32 条基线的投影，测试以「基线 N」引用，覆盖表由 `MicroFlow4Flutter/tool/baseline_coverage.dart` 生成；该文件随基线设计同步修订，不引入新语义。
+
 对应的 Flutter 首版实现位于 [MicroFlow4Flutter](../MicroFlow4Flutter/README.md)，实现状态以子项目 README、测试和后续实施记录为准。
 
 需求与行为以平台标准设计为准，技术实现遵守配套选型和一致性设计。文档中的目标能力与实现、兼容性测试、性能及高可用验收分别管理。
