@@ -6,8 +6,13 @@ from .runtime import LocalRuntime, RunResult
 from .worker import ScheduledRuntime
 from .resources import LeaseRequest, ResourceLease, ResourceLeaseProvider, MemoryLeaseProvider
 from .events import EventIntent, EventStore, MemoryEventStore
+from .impact import (ImpactIndex, build_index, describe_index, flow_references,
+                     operator_flows, operator_references, upstream_flows)
+from .codes import describe_diagnostics
 
 __version__ = "0.1.0"
 __all__ = ["Context", "ContractError", "Debug", "Input", "Log", "Metrics",
            "LocalRuntime", "RunResult", "ScheduledRuntime", "MicroFlowError", "Output", "PersistenceError", "Registry", "discover",
-           "EventIntent", "EventStore", "MemoryEventStore"]
+           "EventIntent", "EventStore", "MemoryEventStore",
+           "ImpactIndex", "build_index", "describe_index", "flow_references",
+           "operator_flows", "operator_references", "upstream_flows", "describe_diagnostics"]

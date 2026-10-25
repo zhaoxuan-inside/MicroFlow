@@ -50,8 +50,13 @@ class LocalRuntime:
     def __init__(self, release, *, resources=None):
         self.release = release
         self.resources = dict(resources or {})
+        self._checked_flows = set()
 
     def _preflight(self, flow_id):
+        # The walk is a pure function of the frozen release; reused runtimes pay
+        # for each flow once. Only successfully checked flows are cached.
+        if flow_id in self._checked_flows:
+            return
         if flow_id not in self.release.flows:
             raise ContractError("UNKNOWN_FLOW", "Flow is not in this release", flow_id)
         visited, pending = set(), [flow_id]
@@ -73,6 +78,7 @@ class LocalRuntime:
                     raise ContractError("UNSUPPORTED_LOCAL_POLICY", "Policy requires a different runtime", name)
                 if kind == "subflow":
                     pending.append(node["flow"])
+        self._checked_flows.add(flow_id)
 
     def run(self, flow_id, data, *, cancel=None):
         self._preflight(flow_id)
@@ -161,7 +167,8 @@ class LocalRuntime:
                 raise ContractError("INVALID_RETURN", "Operator must return boolean")
             if resolution != "unhandled_exception" and enforce_return_budget:
                 debug.check_cancelled()
-                if time.monotonic() - started > seconds(policy["timeout"]["attempt"]) or time.monotonic() >= state["deadline"]:
+                now = time.monotonic()
+                if now - started > seconds(policy["timeout"]["attempt"]) or now >= state["deadline"]:
                     raise ContractError("ATTEMPT_TIMEOUT", "Attempt exhausted its time budget")
             if accepted:
                 try:
@@ -220,8 +227,9 @@ class LocalRuntime:
                 return {"data": None, "meta": {"status": "CANCELLED", "releaseId": self.release.release_id,
                         "traceId": state["trace_id"], "invocationId": invocation, "stopReason": None},
                         "error": _error("CANCELLED", "execution")}
+            now = time.monotonic()
             for policy in plan.policies.values():
-                state["deadline"] = min(state["deadline"], time.monotonic() + seconds(policy["timeout"]["deadline"]))
+                state["deadline"] = min(state["deadline"], now + seconds(policy["timeout"]["deadline"]))
             for name in plan.graph.order:
                 node = definition["nodes"][name]
                 key = prefix + name

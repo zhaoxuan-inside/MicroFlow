@@ -1,7 +1,10 @@
 """Compile immutable definitions, mappings, control edges and effective policies."""
 from dataclasses import dataclass, field, replace
 from collections.abc import Mapping
+import hashlib
 import json
+from pathlib import Path
+
 from . import expressions
 from .errors import ContractError, MicroFlowError
 from .graph import Graph, compile_graph
@@ -265,8 +268,6 @@ def _compile_release(registry, flows, *, defaults, provider_capabilities, locati
     location.update(flow_id="", node_id="")
     compile_graph(definitions, references, edge_sources=reference_sources)
     # Hash actual module bytes as well as definitions/contracts, not just version labels.
-    import hashlib
-    from pathlib import Path
     sources = dict(registry.sources)
     for path, content in sources.items():
         if Path(path).read_bytes() != content:
