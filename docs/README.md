@@ -23,6 +23,8 @@
 
 ### 配套资源
 
+系列文章（知乎风格，面向外部分享）：[docs/articles/](articles/README.md) —— ① 愿景与设计思想 ② Python 后端使用 ③ Flutter 前端使用。
+
 机器可读资源：[一致性基线投影 v1.0](design/baselines.json) —— 前端框架 §44.3 全部 32 条基线的投影，测试以「基线 N」引用，覆盖表由 `MicroFlow4Flutter/tool/baseline_coverage.dart` 生成；该文件随基线设计同步修订，不引入新语义。
 
 对应的语言实现位于 [MicroFlow4Python](../MicroFlow4Python/README.md) 与 [MicroFlow4Flutter](../MicroFlow4Flutter/README.md)，实现状态以子项目 README、测试和后续实施记录为准。
