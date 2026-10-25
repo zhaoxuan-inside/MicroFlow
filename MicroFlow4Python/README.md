@@ -2,7 +2,7 @@
 
 Python 业务算子与流程框架，核心运行依赖仅为标准库。设计要点见根 [README](../README.md)「实现的设计」5.1（原上级 `docs/` 设计文档已归档于 git 历史）。
 
-**开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具的任务导向指南：开发回路、算子/编排规范、证据纪律、诊断速查），参照 [`examples/trading/`](examples/trading/README.md) 端到端示例。
+**开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具的任务导向指南：开发回路、算子/编排规范、证据纪律、诊断速查）；集成方法见下方「集成与使用」。
 
 ## 实现特点
 
@@ -13,54 +13,117 @@ Python 业务算子与流程框架，核心运行依赖仅为标准库。设计�
 
 协议切片与任务状态记录见下文（原实施计划文档已归档于 git 历史）。
 
-## 快速开始
+## 集成与使用
 
-当前声明 Python >=3.12；实际验证版本逐次记录于实施计划，未运行的解释器不视为已兼容验证。
+四步接入，全部代码可直接复制。当前声明 Python >=3.12（实际验证版本逐次记录于实施记录）；凡触发本地编译或执行的命令必须显式 `--ephemeral`。框架默认耐久策略，无合格宿主提供者时不得用于耐久异步或恢复——本地内存实现仅用于显式同步 ephemeral 演练。
 
-在本目录使用目标解释器运行：
+环境准备：
 
 ```powershell
 py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\microflow.exe --help
-.\.venv\Scripts\python.exe -m microflow describe examples/quote.py
-.\.venv\Scripts\microflow.exe check examples/quote.flow.json --ephemeral
-.\.venv\Scripts\microflow.exe run examples/quote.flow.json quote examples/quote.input.json --ephemeral
+.\.venv\Scripts\python.exe -m unittest discover -s tests -q   # 全量测试应全绿
 ```
 
-`describe` 只加载显式列出的可信 Python 文件，输出版本化 JSON。导入与注册代码是可执行代码，注册入口不得执行实际业务或连接业务资源。示例只注册纯计算的报价算子，金额以整数单位表示。
+### 第 1 步：定义算子（契约先行）
 
-框架默认耐久策略；无合格宿主提供者时不得用于耐久异步或恢复。现有本地内存实现仅用于显式同步 ephemeral 演练，不能作为生产持久化实现。
-
-## 本地执行（LocalRuntime）
-
-示例运行输出 `total=3900`。`LocalRuntime` 当前按确定性拓扑顺序执行静态 DAG、子图及 all_active_success 汇合；`run_async` 是对该本地流程的非阻塞等待入口，不返回后台任务接纳。Python 同步方法由线程承载，协程直接等待；二者的业务结果语义一致。
-
-本地执行器不启用耐久、后台异步、恢复、缓存、业务幂等、重试、多资源互斥或动态控制节点，相关配置会在运行前拒绝。超时在检查点和方法返回后判断，不能中断线程或作为硬执行上限；不承诺生产超时隔离。候选快照固定源码字节和 manifest，可校验缺失/损坏；尚不提供耐久发布、迁移或回退。
-
-Python API 示例：
+新建业务模块（如 `ops.py`）：先注册 Schema，再注册算子——契约与副作用是强制声明，`effect` 必须如实：
 
 ```python
+def discount(input, output, context, metrix, debug, log):
+    total = input["total"]
+    payable = total * 95 // 100 if input["vip"] else total   # 金额用整数分
+    output.set("payable", payable)
+    output.set("saved", total - payable)
+    return True
+
+def register(registry):
+    registry.register_schema("shop.discount.pass@1", {
+        "type": "object",
+        "properties": {"total": {"type": "integer", "minimum": 0},
+                       "vip": {"type": "boolean"}},
+        "required": ["total", "vip"],
+    })
+    registry.register_schema("shop.discount.result@1", {
+        "type": "object",
+        "properties": {"payable": {"type": "integer", "minimum": 0},
+                       "saved": {"type": "integer", "minimum": 0}},
+        "required": ["payable", "saved"],
+    })
+    registry.register_operator(
+        name="shop.discount", version="1", method=discount,
+        input_schema="shop.discount.pass@1", output_schema="shop.discount.result@1",
+        capabilities={"effect": "pure", "idempotency_support": "natural"},
+        description="会员折扣：vip 按 95/100 整数折算")
+```
+
+规则要点：六参数签名 `(input, output, context, metrix, debug, log) -> bool`；`True`=成功、`False`=业务否定（写 `output.data` 表达原因）、异常自动进 fallback（无 fallback 则根流程熔断）；`output.set` 只写 `data`，**数组整体写入一次**（按稀疏下标逐元素写触发 `SPARSE_ARRAY`）；注册入口只做声明，不得执行业务、连接资源或启动后台任务。
+
+### 第 2 步：编排配置（业务项目 JSON）
+
+```json
+{
+  "modules": ["ops.py"],
+  "flows": [{
+    "id": "checkout",
+    "input_schema": "shop.discount.pass@1",
+    "output_schema": "shop.discount.result@1",
+    "nodes": {
+      "price": {
+        "operator": "shop.discount@1",
+        "inputs": {"total": {"from": "flow.input.total", "required": true},
+                   "vip": {"from": "flow.input.vip", "required": true}}
+      }
+    },
+    "outputs": {
+      "payable": {"from": "nodes.price.output.data.payable", "required": true},
+      "saved": {"from": "nodes.price.output.data.saved", "required": true}
+    }
+  }]
+}
+```
+
+数据流走显式路径映射（来源必须以 `flow.input` / `nodes.<id>.output` / `context` 开头）；类型不兼容在编译期报 `SCHEMA_INCOMPATIBLE`，映射目标重叠报 `MAPPING_CONFLICT`。复杂流程用子图分层（`"type": "subflow", "flow": "<子流程 id>"`）——子图与算子遵守同一契约纪律：引用而非复制、接口预算（端口建议 ≤8）、父图不展开即可读。
+
+### 第 3 步：编译与执行
+
+CLI（对 AI 工具与脚本最友好）：
+
+```bash
+python -m microflow check shop.project.json --ephemeral    # 编译校验，0 诊断才继续
+python -m microflow run shop.project.json checkout input.json --ephemeral
+```
+
+Python API（同一语义，`import microflow` 即用）：
+
+```python
+from pathlib import Path
 from microflow import LocalRuntime, discover
 from microflow.compiler import compile_release
 from microflow.values import load_json
-from pathlib import Path
 
-registry = discover(["examples/quote.py"])
-flows = load_json(Path("examples/quote.flow.json").read_text(encoding="utf-8"))["flows"]
-release = compile_release(registry, flows, defaults={
-    "durability": "ephemeral", "recovery": {"enabled": False}
-})
-result = LocalRuntime(release).run("quote", {"items": [{"price": 1200, "quantity": 2}]})
-assert result.output["data"]["total"] == 2400
+registry = discover(["ops.py"])          # 只加载显式列出的可信文件
+flows = load_json(Path("shop.project.json").read_text(encoding="utf-8"))["flows"]
+release = compile_release(registry, flows,
+                          defaults={"durability": "ephemeral", "recovery": {"enabled": False}})
+result = LocalRuntime(release).run("checkout", {"total": 5498, "vip": True})
+assert result.output["data"]["payable"] == 5223
+# 调用成功 ≠ 业务成功：业务终态看 result.output["meta"]["status"]
 ```
+
+`LocalRuntime` 按确定性拓扑顺序执行静态 DAG、子图及 `all_active_success` 汇合；`run_async` 是非阻塞等待入口，不返回后台任务接纳。它不启用耐久、后台异步、恢复、缓存、业务幂等、重试或动态控制节点——相关配置会在运行前拒绝（`UNSUPPORTED_LOCAL_*` 是护栏不是缺陷）；超时在检查点与方法返回后判断，不承诺硬执行上限。
+
+### 第 4 步：影响分析与观测
+
+```bash
+python -m microflow impact shop.project.json --ephemeral --operator shop.discount@1
+```
+
+返回引用节点、涉及流程与上游闭包——改算子前先查影响面（静态投影，"未被引用"≠"未使用"）。执行产生的结构化记录（生命周期事件、耗时、状态）由框架零埋点采集，上层按需聚合为监控/运营投影；需要业务原子性的事实等 T10/T14 可靠事件通道。
 
 ## CLI 命令面
 
 CLI 体系依据《CLI 命令体系设计》（八条兼容契约 + 17 命令封闭集合，要点见根 README 5.3；原文档归档于 git 历史；协议 `microflow-cli-v1`）：stdout 只输出确定性 JSON，退出码 0=肯定/中性、1=被验证对象否定、2=请求失败；凡触发本地编译或执行的命令必须显式 `--ephemeral`。工具应先 `microflow capabilities` 探测命令目录再使用。
-
-**端到端演示**：[examples/trading/](examples/trading/README.md) —— ZCode 经 CLI 构建的交易平台垂直切片（算子 + 编排 + 子图 + 影响分析 + 监控/运营聚合），前端对应 `MicroFlow4Flutter/apps/trading_app`。
 
 | 命令 | 状态 | 用途 |
 |---|---|---|
@@ -99,7 +162,7 @@ CLI 体系依据《CLI 命令体系设计》（八条兼容契约 + 17 命令封
 
 `from microflow import ScheduledRuntime` 可将状态命令连接到本进程工作执行器。用 `async with ScheduledRuntime(commands, workers=4) as runtime` 管理服务：`await runtime.submit(..., request_id=...)` 返回接纳；`await runtime.wait(execution_id, timeout=...)` 返回实际终态；`await runtime.run(...)` 组合两者。等待超时或调用方取消等待不取消已接纳工作，显式取消使用 `runtime.cancel`。同步方法使用有界业务线程池，协程及等待不占业务线程；结果提交先于可选采集。
 
-纯计算示例：在本目录执行 `.venv/Scripts/python.exe examples/scheduled_quote.py`，输出 `total=3900` 并明确标记 `protocol_test=true`、`durability=ephemeral`。示例展示服务流程，不作为生产耐久性证据。
+纯计算/读取切片演示了完整服务流程（接纳 → 执行 → 原子提交 → 可选采集），返回值明确标记 `protocol_test` 与 `durability`；不作为生产耐久性证据。
 
 当前工作执行器只支持状态命令层已允许的静态算子 DAG。旧 CLAIMED 或完成提交故障会阻断执行，`runtime.blocked` 可查询原因，不自动重跑业务。`close` 排空工作，不能硬中断不返回的线程。队列/尝试/流程预算已接入状态检查，CPU 进程池、硬隔离、业务检查点、自动恢复和真实提供者验证仍待实施，详见算法设计 §17～18。
 

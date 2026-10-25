@@ -124,8 +124,8 @@ MicroFlow 是面向 VibeCoding 开发方式（AI 结对编程）的业务框架�
 
 | 子项目 | 定位 | 手册 | 端到端示例 |
 |---|---|---|---|
-| [MicroFlow4Python](MicroFlow4Python/README.md) | 后端执行框架：契约算子、静态编译、状态协调协议；零三方依赖 | [开发手册](MicroFlow4Python/DEVELOPER_GUIDE.md) | [examples/trading](MicroFlow4Python/examples/trading/README.md)（CLI 全链路 + HTTP 宿主 + 监控运营） |
-| [MicroFlow4Flutter](MicroFlow4Flutter/README.md) | 前端框架：统一资源注册、解释运行时、Tier A/B 渲染、命令面 | [开发手册](MicroFlow4Flutter/DEVELOPER_GUIDE.md) | [apps/trading_app](MicroFlow4Flutter/apps/trading_app/lib/main.dart)（命令面构造 + 遥测数据面） |
+| [MicroFlow4Python](MicroFlow4Python/README.md) | 后端执行框架：契约算子、静态编译、状态协调协议；零三方依赖 | [开发手册](MicroFlow4Python/DEVELOPER_GUIDE.md) | [README「集成与使用」](MicroFlow4Python/README.md)（四步接入 + CLI 回路） |
+| [MicroFlow4Flutter](MicroFlow4Flutter/README.md) | 前端框架：统一资源注册、解释运行时、Tier A/B 渲染、命令面 | [开发手册](MicroFlow4Flutter/DEVELOPER_GUIDE.md) | [README「集成与使用」](MicroFlow4Flutter/README.md)（五步接入 + 命令面） |
 
 系列分享文章：[articles/](articles/README.md)（① 愿景与设计思想 ② Python 使用 ③ Flutter 使用）。
 

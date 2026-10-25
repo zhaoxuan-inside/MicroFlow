@@ -37,11 +37,11 @@ VibeCoding 工具首选 CLI（机器可判定证据），开发者可用等价 P
 | 8 影响 | `microflow impact <project> --ephemeral --operator REF` | 引用与上游闭包 | 已实现 |
 | 9 提交 | 版本管理（git） | 审计与回滚由版本管理承担 | — |
 
-完整可运行的参照实现：[`examples/trading/`](examples/trading/README.md)（算子 + 编排 + 子图 + 监控运营聚合 + HTTP 宿主）。新任务先读它再动手。
+最小可复制代码见 [README](README.md)「集成与使用」四步；宿主网络包装（标准库 HTTP 服务承载本地演练）按平台标准 §20/§27 由宿主实现。
 
 ## 4. 算子开发规范
 
-**契约先行**：先注册 Schema，再写方法，最后注册算子。参照 `examples/trading/trading_ops.py`：
+**契约先行**：先注册 Schema，再写方法，最后注册算子。参照 README「集成与使用」第 1 步：
 
 ```python
 def discount(input, output, context, metrix, debug, log):
@@ -70,7 +70,7 @@ registry.register_operator(name="trading.pricing_discount", version="1",
 
 ## 5. 编排配置规范
 
-流程 JSON 骨架见 `examples/trading/trading.project.json`。要点：
+流程 JSON 骨架见 README「集成与使用」第 2 步。要点：
 
 - **节点类型**：`operator`（默认）/ `subflow` / `route` / `join` / `map` / `loop` / `wait`；动态控制节点的执行尚未接入本地演练器。
 - **映射**：`inputs` 的 `from` 必须以 `flow.input` / `nodes.<id>.output` / `context` 开头；`required` 先于 `default` 判定；多目标重叠 = `MAPPING_CONFLICT`；复杂计算交给算子，表达式只有受限白名单（无 eval）。
@@ -90,7 +90,7 @@ registry.register_operator(name="trading.pricing_discount", version="1",
 - **采集是框架职责**：每次调用自动产生结构化记录（`attempt_started` / `attempt_finished` / `invocation_completed`），业务代码**零埋点**；基础生命周期记录不可覆盖。
 - `metrix` / `log` 代理可选（六参数同签名）：只读最终结果快照、写自己的输出，代理失败不影响业务。
 - 记录字段是**打平的**（`record["operatorName"]` 而非 `record["options"]["operatorName"]`）；`durationMs` 在 `attempt_finished`。
-- **上层聚合参考**：`examples/trading/ops_report.py` —— 消费记录生成监控指标（调用量/成功率/耗时）与运营汇总（订单/GMV）。生产中该角色由监控/运营平台承载，可靠业务事件走 T10 协议（`EventIntent`）。
+- **上层聚合**：消费记录生成监控指标（调用量/成功率/耗时）与运营汇总（订单/GMV），作为独立脚本或运营平台模块实现。生产中该角色由监控/运营平台承载，可靠业务事件走 T10 协议（`EventIntent`）。
 - 需要业务原子性的事实不能只靠日志代理——等 T10/T14 的可靠通道。
 
 ## 8. 变更与影响分析
@@ -128,5 +128,5 @@ microflow impact trading.project.json --ephemeral --flow pricing    # 子图引�
 1. **小步**：一个会话一个任务，做完即收口；大任务先拆成"可单步验证"的粒度。
 2. **验收先行**：动手前写下可执行的完成判据（check 0 诊断 + run 期望输出 + 测试用例）。
 3. **负面清单**（建议写入项目 AGENTS.md）：禁止 Mock/TODO 代替真实实现；禁止修改测试断言让测试通过；禁止把写入声明成 `pure`；所有命令必须附运行证据；先 `capabilities` 探测再使用 CLI。
-4. **读的顺序**：README → 本手册 → 平台标准 §6～§10（算子协议）→ `examples/trading/`。
+4. **读的顺序**：README「集成与使用」→ 本手册 → 根 README「实现的设计」5.1（算子协议要点）。
 5. **不确定就查，不要猜**：契约看 `schema`，影响看 `impact`，能力看 `capabilities`——框架的 API 面是封闭且全部可读的，猜测是幻觉的来源。

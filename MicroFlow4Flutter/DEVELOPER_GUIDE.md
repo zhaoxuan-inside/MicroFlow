@@ -18,14 +18,14 @@ cd packages/microflow_model      && flutter analyze && flutter test
 # 总包 + 一致性基线测试
 flutter analyze && flutter test
 # 运行示例应用
-cd apps/habit_tracker && flutter run -d chrome
+# 应用工程由业务层自行创建（见下文「集成与使用」五步）
 ```
 
 基线覆盖表由工具生成（勿手工编辑）：`dart run tool/baseline_coverage.dart`。
 
 ## 3. 两条开发路径
 
-### 路径 A：应用开发者（参照 `apps/habit_tracker` 与 `apps/trading_app`）
+### 路径 A：应用开发者（参照 README「集成与使用」五步）
 
 业务层职责只有四件事（§27 责任矩阵），其余全是模型：
 
@@ -63,7 +63,7 @@ session.undo();               // LIFO 回滚最近一次修订；审计保留
 
 - `onEnter` 引用的绑定 id 必须与页面**同批**存在；
 - 绑定的目标节点/导航目标必须**已经存在**（不许前向引用）；
-- 因此多页面项目按页面**分批推进**：基础绑定随首页进入，后续页面的绑定随该页 `createPage` 同批 `copyWith` 进候选，导航按钮绑定放最后一批。参照 `apps/trading_app/lib/project.dart` 的三轮会话链。
+- 因此多页面项目按页面**分批推进**：基础绑定随首页进入，后续页面的绑定随该页 `createPage` 同批 `copyWith` 进候选，导航按钮绑定放最后一批——多页面项目按页面分批推进。
 
 ## 4. 页面与交互
 
@@ -133,4 +133,4 @@ policy: MFPolicy.rejectNew,   // 并发策略：未声明的重复触发是静�
 2. **先探测**：`mfAuthoringCapabilities()` 拿命令目录；未实现的能力（编译模式、性能门禁、增量构建）不要假设存在。
 3. **小步 + 门禁证据**：一条命令一个意图，检查 `MFCommandResult.ok` 与诊断；失败时项目不变，直接改参数重提。
 4. **引用先行检查**：新页面引用的资源先注册；绑定的目标先存在（前向引用会被门禁拒绝——这是特性不是缺陷）。
-5. **读的顺序**：README（能力分级与基线覆盖）→ 本手册 → 基线设计 §2/§7/§11/§14 → `apps/trading_app`（authoring 构造的完整参照）。
+5. **读的顺序**：README（能力分级、集成五步与基线覆盖）→ 本手册 → 基线设计 §2/§7/§11/§14（归档于 git 历史）。

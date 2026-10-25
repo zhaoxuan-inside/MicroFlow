@@ -2,7 +2,7 @@
 
 MicroFlow Frontend 的 Flutter 实现（对齐《前端框架完整设计方案》v1.12，原文档已归档于 git 历史；设计要点见根 README「实现的设计」5.2）。
 
-**开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具：两条开发路径、页面/绑定/主题/布局规范、观测与门禁纪律、诊断速查），参照 `apps/trading_app`（authoring 命令面构造的完整示例）。
+**开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具：两条开发路径、页面/绑定/主题/布局规范、观测与门禁纪律、诊断速查）；集成方法见下方「集成与使用」。
 
 ## 模块结构（可独立升级）
 
@@ -117,21 +117,129 @@ dart tool/baseline_coverage.dart
 
 覆盖汇总：21/32 条已覆盖，5 条部分覆盖（生成工具：`dart run tool/baseline_coverage.dart`，勿手工编辑本表）。
 
-## 使用
+## 集成与使用
+
+五步接入。模块按需依赖（业务层不必引入全部能力）；每包独立 `flutter analyze`（0 issues）与 `flutter test` 全绿才算交付。
+
+### 第 1 步：引入依赖
+
+```yaml
+dependencies:
+  microflow4_flutter:    # 总包：装配 + 再导出（也可只引需要的子包）
+    path: ../microflow4_flutter
+```
+
+### 第 2 步：注册资源（代码平面）
+
+Tier A 元组件注册一次（渲染由解释器组件表承载，注册供静态校验/事件锚点/载荷契约检查）；业务实现以 `function`/`adapter` 注册，契约强制声明 output Schema，副作用触点用采集注记声明运营事件：
+
+```dart
+MFRegistry buildRegistry() {
+  final registry = MFRegistry();
+  for (final id in MFTierA.required) {
+    registry.register('primitive', id,
+      ComponentContract(
+        props: switch (id) {
+          'Text' => {'text': const TString()},
+          'Button' => {'label': const TString(),
+                       'variant': const TEnum(['primary', 'secondary', 'danger'])},
+          _ => const {},
+        },
+        events: switch (id) {
+          'Button' => {'press': const TString()},
+          'Stack' => const {'press': TString(), 'onEnter': TBool()},
+          _ => const {},
+        },
+        slots: const ['content'],
+        layout: const LayoutCapability(display: ['block', 'inline'],
+                                       sizing: ['hug', 'fill', 'fixed']),
+      ),
+      MFHostComponentImpl((children, props) => Object()),
+      description: 'Tier A 元组件');
+  }
+  registry.register('adapter', 'adapter.shop.add_cart',
+    const ComponentContract(props: {
+      'output': TObject(requiredKeys: ['cartCount', 'hint']),
+      // 采集注记：声明的事件与参数键进入运营事件，业务代码零埋点
+      'telemetry': MFTelemetryAnnotation(
+          events: {'success': 'ops.shop.added-to-cart'}, args: ['sku']),
+    }),
+    MFAdapterImpl((args) async => data.addCart(args['sku'])),
+    description: '加入购物车');
+  return registry;
+}
+```
+
+### 第 3 步：声明页面与绑定（配置平面）
+
+页面是一棵纯配置的节点树（根节点 id 与页面同 id，即 §39 生命周期锚点对象），交互是绑定图：
+
+```dart
+final page = MFPage(
+  id: 'cart-page', route: '/cart',
+  stateMembers: const ['cartItems', 'totalText'],
+  onEnter: 'cart-enter',                       // 页面打开时执行的绑定 id
+  tree: MFNode(id: 'cart-page', type: 'Stack', children: [
+    MFNode(id: 'cart-list', type: 'List',
+        props: {'items': {'ref': 'state.cartItems'}},   // 声明式列表绑定
+        children: [
+          MFNode(id: 'cart-row', type: 'Text',
+              props: {'text': {'ref': 'item.lineText'}}),  // item.<field> 项作用域
+        ]),
+  ]),
+);
+final bindings = MFBindingMap(id: 'shop-map', schemaVersion: '1.0', syntaxVersion: '1.0',
+    bindings: [
+      MFBinding(id: 'cart-enter', on: 'cart-page.onEnter', actions: [
+        MFAdapterAction(kind: 'function', call: 'fn.shop.cart', as: 'cart'),
+        MFStateAction(target: 'cartItems', value: MFRef('prev.cart.items')),
+        MFStateAction(target: 'totalText', value: MFRef('prev.cart.totalText')),
+      ], policy: MFPolicy.rejectNew),
+    ]);
+```
+
+注意门禁的前向引用规则：`onEnter` 引用的绑定必须与页面同批存在，绑定目标节点必须先就位；样式的值只允许 token 引用（字面量是静态错误）；同轴 fill+fixed 不可满足（`mf.layout.unsatisfiable`）。
+
+### 第 4 步：装配启动（数据平面）
 
 ```dart
 import 'package:microflow4_flutter/microflow4_flutter.dart';
 
-final fw = MicroFlowFramework.create(
-  project: project,       // MFProject（§4）
+final framework = MicroFlowFramework.create(
+  project: project,       // MFProject（§4）：pages + bindingMaps + i18n + tokens + 导航
   registry: registry,     // MFRegistry（§23 统一资源注册）
-  releaseId: 'r1',
-  telemetrySink: sink,    // 可选；缺省内存 sink
+  releaseId: 'shop-r1',
+  telemetrySink: sink,    // 见第 5 步；缺省内存 sink
 );
-runApp(MicroFlowApp(project: project, registry: registry, runtime: fw.runtime));
+runApp(MicroFlowApp(project: project, registry: registry, runtime: framework.runtime));
 ```
 
-完整可运行示例见 [example/lib/main.dart](example/)（§44.2 “备忘（Notes）”）。
+### 第 5 步：遥测接收（业务层承载）
+
+开发/测试用内存 sink（`delivered` 可直接断言事件）；生产按 §30.1 协议实现（批量/压缩/退避/断网缓存/`event_id` 去重），或参考同源 JSONL 落地方案：
+
+```dart
+final sink = MFInMemorySink();          // 测试：framework.telemetry.flush() 后查 sink.delivered
+```
+
+标准运营事件族（`ops.page.viewed` 等）由运行时拦截边界零埋点产生，业务手工上报是静态错误（基线 29）。
+
+### 工具路径：authoring 命令面
+
+AI/工具不直接拼模型，而是走结构化命令（每条过与发布相同的静态门禁，产生修订审计，可 LIFO 回滚）：
+
+```dart
+final caps = mfAuthoringCapabilities();   // 探测命令目录（mf-authoring-capabilities-v1）
+final session = MFAuthoringSession(project: base, registry: registry, actor: 'zcode-builder');
+final r = session.createPage(pageId: 'cart-page', route: '/cart', tree: tree,
+    stateMembers: const [...], onEnter: 'cart-enter', navigationFrom: 'home-page');
+if (!r.ok) throw StateError('${[for (final d in r.diagnostics) d.message]}');
+session.connectNavigation(from: 'home-page', to: 'orders-page');
+session.inspectImpact('home-page');       // §4.3 反向索引影响分析
+session.undo();                           // 回滚最近一次修订，审计保留
+```
+
+注意门禁禁止前向引用（`onEnter` 绑定与页面同批、导航目标先存在）——多页面项目按页面分批推进。
 
 ## 检查
 
