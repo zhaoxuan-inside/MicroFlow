@@ -2,6 +2,8 @@
 
 MicroFlow Frontend 的 Flutter 实现（对齐 `docs/design/frontend-framework-design.md` v1.12）。
 
+**开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具：两条开发路径、页面/绑定/主题/布局规范、观测与门禁纪律、诊断速查），参照 `apps/trading_app`（authoring 命令面构造的完整示例）。
+
 ## 模块结构（可独立升级）
 
 ```text

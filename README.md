@@ -71,3 +71,5 @@ MicroFlow 是面向 VibeCoding 开发方式的业务框架**设计基线**。核
 | [MicroFlow4Flutter](MicroFlow4Flutter/README.md) | 前端框架的 Flutter 实现：统一资源注册、解释运行时、Tier A/B 渲染、遥测/实验/Debug 契约面 | Level 0/1 已实现，Level 2 协议面部分实现；一致性基线 21/32 覆盖 |
 
 各实现的任务状态、验证证据与能力边界以其子目录 README 与实施记录为准；本目录设计修订不自动等于实现完成。
+
+**开发手册**（面向 VibeCoding 工具与开发者的任务导向指南）：[MicroFlow4Python 开发手册](MicroFlow4Python/DEVELOPER_GUIDE.md) · [MicroFlow4Flutter 开发手册](MicroFlow4Flutter/DEVELOPER_GUIDE.md)。

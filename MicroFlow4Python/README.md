@@ -2,6 +2,8 @@
 
 Python 业务算子与流程框架，核心运行依赖仅为标准库。设计与任务状态见上级 `docs/`。
 
+**开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具的任务导向指南：开发回路、算子/编排规范、证据纪律、诊断速查），参照 [`examples/trading/`](examples/trading/README.md) 端到端示例。
+
 ## 实现特点
 
 - **零第三方依赖**：包运行依赖为空（`dependencies=[]`），核心仅使用 Python 标准库；经独立 wheel 安装验证 `Requires-Dist` 为 None。
