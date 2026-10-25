@@ -135,6 +135,8 @@ class _NodeRenderer {
     required this.instance,
     required this.providedScopes,
     this.layoutPlans = const {},
+    this.item,
+    this.itemIndex,
   });
 
   final MFInterpreter interpreter;
@@ -143,6 +145,18 @@ class _NodeRenderer {
 
   /// 已解析的条件布局计划（§7.4）：node id -> 命中的声明方案。
   final Map<String, MFLayoutPlan> layoutPlans;
+
+  /// 声明式列表绑定的当前项（§39 事件上下文）：模板子树内 `item.<field>`
+  /// 表达式与事件分发携带的项上下文。
+  final Map<String, Object?>? item;
+
+  /// 当前项序号（键稳定性：无 id 项按序号区分）。
+  final int? itemIndex;
+
+  /// 本渲染域的键后缀：列表项模板实例的键/锚点以 `#<itemKey>` 区分。
+  String get keySuffix => item == null
+      ? ''
+      : '#${item!['id'] ?? itemIndex ?? ''}';
 
   Widget build() => widgetFor(instance.definition.tree);
 
@@ -167,6 +181,19 @@ class _NodeRenderer {
     for (final e in node.props.entries) {
       final expr = MFExpr.parse(e.value);
       evaluated[e.key] = interpreter.runtime.safeEval(expr, _ctx());
+    }
+
+    // 声明式列表绑定：List 节点携带求值后的 `items`（List<Map>）时，
+    // children 是项模板——每项以 item 作用域渲染模板子树，键与事件锚点
+    // 按 `#<itemKey>` 区分；项内事件经 dispatchEvent 携带项上下文执行。
+    if (node.type == 'List') {
+      final items = evaluated['items'];
+      if (items is List) {
+        return KeyedSubtree(
+          key: ValueKey('${instance.id}/${node.id}$keySuffix'),
+          child: _renderItemTemplates(node, items.cast<Object?>()),
+        );
+      }
     }
 
     // 条件布局计划（§7.4）：命中方案覆盖 Stack 的方向/对齐声明。
@@ -204,10 +231,13 @@ class _NodeRenderer {
         // translations are diagnosable (§42.5), never silent.
         if (node.t != null) 'text': interpreter.localize(node.t!, instance.frozen.locale),
       },
-      onEvent: (nodeId, event) {
+      onEvent: (nodeId, event, [payload]) {
         // Dispatch through the runtime binding map (§39); evaluation order
-        // is declaration order and deterministic.
-        interpreter.runtime.dispatchEvent(nodeId, event).ignore();
+        // is declaration order and deterministic. Payload (typed event value)
+        // and the item context of the enclosing list template ride along.
+        interpreter.runtime
+            .dispatchEvent(nodeId, event, payload: payload, item: item)
+            .ignore();
       },
       tokenColor: (name) => resolveTokenColor(interpreter.resolveColor(name)),
     );
@@ -224,14 +254,14 @@ class _NodeRenderer {
 
     final builder = interpreter.table.builders[node.type];
     if (builder != null) {
-      return KeyedSubtree(key: ValueKey('${instance.id}/${node.id}'), child: builder(context, view));
+      return KeyedSubtree(key: ValueKey('${instance.id}/${node.id}$keySuffix'), child: builder(context, view));
     }
     // Model-composition component (§6): expand its definition tree in a
     // component-instance scope with per-instance provided values.
     final def = interpreter.runtime.project.components[node.type];
     if (def != null) {
       return KeyedSubtree(
-        key: ValueKey(interpreter.runtime.ids.componentInstanceId(instance.id, node.id)),
+        key: ValueKey('${interpreter.runtime.ids.componentInstanceId(instance.id, node.id)}$keySuffix'),
         child: _ComponentScope(
           interpreter: interpreter,
           instance: instance,
@@ -253,7 +283,42 @@ class _NodeRenderer {
         params: instance.params,
         prev: const {},
         providedRoots: [...providedScopes, ProvidedScope(id: instance.definition.id, values: instance.provided)],
+        item: item,
       );
+
+  /// 项模板渲染：每个 Map 项渲染一份 children 模板；非 Map 项上报运行诊断
+  /// 后跳过（列表绑定的项是结构化数据，§39）。
+  Widget _renderItemTemplates(MFNode node, List<Object?> items) {
+    final rows = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      final raw = items[i];
+      if (raw is Map) {
+        final itemMap = raw.cast<String, Object?>();
+        final scoped = _NodeRenderer(
+          interpreter: interpreter,
+          instance: instance,
+          providedScopes: providedScopes,
+          layoutPlans: layoutPlans,
+          item: itemMap,
+          itemIndex: i,
+        );
+        rows.add(Column(
+          key: ValueKey('${instance.id}/${node.id}#${itemMap['id'] ?? i}'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [for (final template in node.children) scoped.widgetFor(template)],
+        ));
+      } else {
+        interpreter.runtime.diagSink.add(MFDiag(
+          MFCodes.interactionUnknownMember,
+          '列表绑定第 $i 项不是结构化对象，已跳过（node=${node.id}）',
+          stage: Stage.runtime,
+          severity: Severity.warning,
+        ));
+      }
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: rows);
+  }
 }
 
 /// Component instance boundary: per-instance provided scope is constructed

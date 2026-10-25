@@ -36,8 +36,10 @@ class MFRenderContext {
 
   final Map<String, Object?> props;
 
-  /// `on(nodeId, event)` — the runtime dispatches via binding maps.
-  final void Function(String nodeId, String event) onEvent;
+  /// `on(nodeId, event, [payload])` — the runtime dispatches via binding
+  /// maps; `payload` carries the typed event value declared by the component
+  /// contract (`value` key, §5)，由输入类元组件在用户交互时回传。
+  final void Function(String nodeId, String event, [Map<String, Object?>? payload]) onEvent;
 
   /// Resolve a named color token into a Flutter color.
   final Color Function(String tokenName) tokenColor;
@@ -83,7 +85,7 @@ class MFPrimitiveTable {
           },
         ),
     'Icon': (ctx, view) => Icon(
-          Icons.circle,
+          _iconOf(ctx.props['name'] as String?),
           size: (ctx.props['size'] as num?)?.toDouble(),
           color: ctx.props['color'] is String ? ctx.tokenColor(ctx.props['color'] as String) : null,
         ),
@@ -105,15 +107,29 @@ class MFPrimitiveTable {
         _ => FilledButton(onPressed: press, child: Text(label)),
       };
     },
-    'Input': (ctx, view) => TextField(
+    'Input': (ctx, view) => TextFormField(
+          initialValue: ctx.props['value'] as String?,
           enabled: ctx.props['readOnly'] != true,
           decoration: InputDecoration(labelText: (ctx.props['placeholder'] as String?)),
+          // 输入值经 change 事件回传（契约 events.change 声明载荷类型，§5）；
+          // FormField 自身维持编辑状态，绑定侧镜像到页面状态。
+          onChanged: (text) => ctx.onEvent(view.node.id, 'change', {'value': text}),
         ),
-    'Select': (ctx, view) => DropdownButtonFormField<String>(
-          items: const [],
-          decoration: InputDecoration(labelText: (ctx.props['label'] as String?)),
-          onChanged: (_) => ctx.onEvent(view.node.id, 'change'),
-        ),
+    'Select': (ctx, view) {
+      final raw = ctx.props['options'] as List? ?? const [];
+      String valueOf(Object o) => o is Map ? '${o['value']}' : '$o';
+      String labelOf(Object o) => o is Map ? '${o['label'] ?? o['value']}' : '$o';
+      final options = [for (final o in raw) valueOf(o)];
+      return DropdownButtonFormField<String>(
+        items: [
+          for (var i = 0; i < options.length; i++)
+            DropdownMenuItem(value: options[i], child: Text(labelOf(raw[i])))
+        ],
+        initialValue: options.contains(ctx.props['value']) ? ctx.props['value'] as String : null,
+        decoration: InputDecoration(labelText: (ctx.props['label'] as String?)),
+        onChanged: (v) => ctx.onEvent(view.node.id, 'change', {'value': v}),
+      );
+    },
     'Checkbox': (ctx, view) => Checkbox(
           value: (ctx.props['value'] ?? false) == true,
           tristate: false,
@@ -154,14 +170,17 @@ class MFPrimitiveTable {
       );
     },
     'Tabs': (ctx, view) {
-      final labels = [for (final c in view.children) (c)];
+      final labels = [for (final l in (ctx.props['labels'] as List? ?? const [])) '$l'];
+      final count = view.children.length.clamp(1, 8);
       return DefaultTabController(
-        length: labels.length.clamp(1, 8),
+        length: count,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TabBar(tabs: [for (int i = 0; i < labels.length.clamp(1, 8); i++) Tab(text: 't${i + 1}')]),
-            Expanded(child: TabBarView(children: [for (final w in labels) w])),
+            TabBar(tabs: [
+              for (var i = 0; i < count; i++) Tab(text: i < labels.length ? labels[i] : '${i + 1}'),
+            ]),
+            Expanded(child: TabBarView(children: [for (final w in view.children) w])),
           ],
         ),
       );
@@ -248,6 +267,27 @@ List<MFDiag> tierAContractDiagnostics(Map<String, ComponentContract> registryCon
   if (missing.isEmpty) return const [];
   return [MFDiag(MFCodes.regUnregisteredImpl, 'Tier A 缺失必备元组件实现：${missing.join(', ')}')];
 }
+
+/// 常用图标名映射（Icon 元组件 name 属性）：闭合集合，未知名回落占位形状。
+IconData _iconOf(String? name) => switch (name) {
+      'check' => Icons.check,
+      'add' => Icons.add,
+      'close' => Icons.close,
+      'delete' => Icons.delete_outlined,
+      'stats' => Icons.bar_chart,
+      'list' => Icons.list,
+      'settings' => Icons.settings_outlined,
+      'search' => Icons.search,
+      'refresh' => Icons.refresh,
+      'arrow-back' => Icons.arrow_back,
+      'arrow-forward' => Icons.arrow_forward,
+      'home' => Icons.home_outlined,
+      'person' => Icons.person_outline,
+      'star' => Icons.star_border,
+      'warning' => Icons.warning_amber_outlined,
+      'info' => Icons.info_outline,
+      _ => Icons.circle,
+    };
 
 /// Model-project color mapping; token resolution stays framework side.
 Color resolveTokenColor(Object? v) {

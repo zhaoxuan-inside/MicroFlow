@@ -48,6 +48,36 @@ class MFRecoverySnapshot {
 
   /// Unknown side effects at snapshot time (surface-as-unknown, §16.1).
   final List<Map<String, Object?>> unknownSideEffects;
+
+  /// 序列化（§16.1）：快照必须可持久化才能跨进程恢复；字段与构造面一一对应。
+  Map<String, Object?> toJson() => {
+        'snapshot_version': snapshotVersion,
+        'release_id': releaseId,
+        'created_at': createdAt.toUtc().toIso8601String(),
+        'route': route,
+        'parameters': parameters,
+        'page_state': pageState,
+        'session_state': sessionState,
+        'pending_actions': pendingActions,
+        'state_revision': stateRevision,
+        'unknown_side_effects': unknownSideEffects,
+      };
+
+  factory MFRecoverySnapshot.fromJson(Map<String, Object?> json) => MFRecoverySnapshot(
+        snapshotVersion: json['snapshot_version'] as String? ?? '1.0',
+        releaseId: json['release_id'] as String? ?? '',
+        createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now().toUtc(),
+        route: json['route'] as String?,
+        parameters: (json['parameters'] as Map?)?.cast<String, Object?>() ?? const {},
+        pageState: (json['page_state'] as Map?)?.cast<String, Object?>() ?? const {},
+        sessionState: (json['session_state'] as Map?)?.cast<String, Object?>() ?? const {},
+        pendingActions: ((json['pending_actions'] as List?) ?? const []).cast<String>().toList(growable: false),
+        stateRevision: (json['state_revision'] as num?)?.toInt() ?? 0,
+        unknownSideEffects: ((json['unknown_side_effects'] as List?) ?? const [])
+            .cast<Map>()
+            .map((e) => e.cast<String, Object?>())
+            .toList(growable: false),
+      );
 }
 
 /// Restore outcome: either the instance was restored or the runtime started

@@ -14,6 +14,7 @@ class EvalContext {
     this.params = const {},
     this.prev = const {},
     this.providedRoots = const [],
+    this.item,
   });
 
   final MFStateStore state;
@@ -28,14 +29,19 @@ class EvalContext {
   /// innermost last. Resolution is subtree-bounded (§37.2).
   final List<ProvidedScope> providedRoots;
 
+  /// Current collection item (declarative list binding): inside an item
+  /// template, `item.<field>` references the item map (§39 事件上下文).
+  final Map<String, Object?>? item;
+
   EvalContext withPrev(String? asKey, Object? result) => EvalContext(
         state: state,
         props: props,
         params: params,
-        prev: asKey == null
-            ? {'last': result}
-            : {...prev, 'as:$asKey': result, 'last': result},
+        // 命名结果贯穿整条动作链（§39.1）：无 as 的动作只推进 `last`，
+        // 不丢弃已命名的适配器结果。
+        prev: {...prev, if (asKey != null) 'as:$asKey': result, 'last': result},
         providedRoots: providedRoots,
+        item: item,
       );
 }
 
@@ -95,6 +101,11 @@ class MFExprEvaluator {
     if (root == 'provided') {
       return _resolveProvided(path, ctx);
     }
+    if (root == 'item') {
+      final item = ctx.item;
+      if (item == null) return null;
+      return _walkInner(item, rest);
+    }
     final source = switch (root) {
       'prop' => ctx.props,
       'param' => ctx.params,
@@ -107,8 +118,16 @@ class MFExprEvaluator {
     if (ctx.prev.isEmpty) return null;
     if (joined.isEmpty || joined == 'last') return ctx.prev['last'];
     if (joined.startsWith('as:')) return ctx.prev[joined];
-    // `prev.<asName>` → named action result (§39.1).
-    return ctx.prev[joined] ?? ctx.prev['as:$joined'] ?? ctx.prev['last'];
+    // `prev.<asName>` → named action result (§39.1); `prev.<asName>.<path>`
+    // walks into a structured result map.
+    final direct = ctx.prev['as:$joined'];
+    if (direct != null) return direct;
+    final first = joined.split('.');
+    if (first.length > 1) {
+      final named = ctx.prev['as:${first.first}'];
+      if (named != null) return _walkInner(named, first.skip(1));
+    }
+    return ctx.prev[joined] ?? ctx.prev['last'];
   }
 
   Object? _resolveProvided(String path, EvalContext ctx) {

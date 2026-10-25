@@ -16,6 +16,9 @@ sealed class MFExpr {
   const MFExpr();
 
   static MFExpr parse(Object? json) => switch (json) {
+        // Dart 侧直接以 MFExpr 实例构造（绑定动作/属性树共用一个解析面）：
+        // 已是表达式节点则原样通过，不再包一层字面量。
+        MFExpr expr => expr,
         {'ref': final String path} => MFRef(path),
         {'call': final String fn} => MFCall(
             fn,

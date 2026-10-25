@@ -40,10 +40,13 @@ class MFEventEnvelope {
     this.actionRequestId,
     this.identity = const {},
     this.experimentAssignments = const [],
+    String? eventId,
+    String? occurredAt,
+    String? clientSentAt,
   }) {
-    eventId = _uuid();
-    occurredAt = DateTime.now().toUtc().toIso8601String();
-    clientSentAt = DateTime.now().toUtc().toIso8601String();
+    this.eventId = eventId ?? _uuid();
+    this.occurredAt = occurredAt ?? DateTime.now().toUtc().toIso8601String();
+    this.clientSentAt = clientSentAt ?? DateTime.now().toUtc().toIso8601String();
     _eventName = eventName;
     _payload = payload;
   }
@@ -71,6 +74,34 @@ class MFEventEnvelope {
 
   String get eventName => _eventName;
   Map<String, Object?> get payload => _payload;
+
+  /// 从持久化日志恢复（§30.2 查询/导出消费面）：保留原 event_id 与
+  /// occurred_at/client_sent_at——重放与查询的时间过滤以原始发生时间为准。
+  factory MFEventEnvelope.fromJson(Map<String, Object?> json) => MFEventEnvelope(
+        eventName: json['event_name'] as String,
+        payload: (json['payload'] as Map?)?.cast<String, Object?>() ?? <String, Object?>{},
+        sessionId: json['session_id'] as String,
+        pageInstanceId: json['page_instance_id'] as String,
+        route: json['route'] as String,
+        releaseId: json['release_id'] as String,
+        rendererVersion: json['renderer_version'] as String,
+        environment: json['environment'] as String,
+        traceId: json['trace_id'] as String,
+        schemaVersion: json['schema_version'] as String? ?? '1.0',
+        privacyClass: json['privacy_class'] as String? ?? 'operational',
+        layerInstanceId: json['layer_instance_id'] as String?,
+        componentInstanceId: json['component_instance_id'] as String?,
+        interactionId: json['interaction_id'] as String?,
+        actionRequestId: json['action_request_id'] as String?,
+        identity: (json['identity'] as Map?)?.cast<String, Object?>() ?? const {},
+        experimentAssignments: ((json['experiment_assignments'] as List?) ?? const [])
+            .cast<Map>()
+            .map((e) => e.cast<String, Object?>())
+            .toList(growable: false),
+        eventId: json['event_id'] as String?,
+        occurredAt: json['occurred_at'] as String?,
+        clientSentAt: json['client_sent_at'] as String?,
+      );
 
   factory MFEventEnvelope.fromRaw(Map<String, Object?> raw) => MFEventEnvelope(
         eventName: raw['event_name'] as String,

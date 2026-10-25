@@ -1,0 +1,29 @@
+name: ops_admin
+description: >-
+  运营管理平台（纯 Web）：基于 MicroFlow4Flutter 的声明式前端。读取同源
+  共享遥测日志（habit_tracker 经框架遥测管道落盘的 §24.2 事件信封），按
+  §30.2 查询/导出协议提供运营指标、页面/功能分析、日志检索、导出与采集控制。
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  microflow4_flutter:
+    path: ../../
+  mf_platform_store:
+    path: ../mf_platform_store
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # 浏览器端到端测试以真实打卡运行时充当生产端（跨应用共享日志链路）。
+  habit_tracker:
+    path: ../habit_tracker
+
+flutter:
+  uses-material-design: true

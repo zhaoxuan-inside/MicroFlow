@@ -146,6 +146,7 @@ class MFTelemetryAnnotation {
     this.events = const {},
     this.privacyClass = 'operational',
     this.samplingRatio,
+    this.args = const [],
   });
 
   /// 触点 -> 已登记事件名（§24.7 示例：entry / success / failure）。
@@ -155,6 +156,10 @@ class MFTelemetryAnnotation {
 
   /// ratio 采样（(0,1]）；null = 全量。命中判定由运行时按请求标识确定性执行。
   final double? samplingRatio;
+
+  /// 声明进入事件 payload 的动作参数键（§24.7 定向内容）：只有显式声明的
+  /// 参数键会随注记事件上报，未声明参数不进入采集面。
+  final List<String> args;
 }
 
 /// 追踪传播声明（§24.8）：方向（出站、回传或双向）与载体字段。出站上下文

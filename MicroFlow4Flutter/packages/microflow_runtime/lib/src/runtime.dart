@@ -331,7 +331,8 @@ class MFRuntime {
 
   /// Execute a named binding (§39.1). `ops.feature.used` and error
   /// handling happen here and never in business code (§24.7).
-  Future<MFActionResult> execute(String bindingId, {Map<String, Object?> props = const {}}) async {
+  Future<MFActionResult> execute(String bindingId,
+      {Map<String, Object?> props = const {}, Map<String, Object?>? item}) async {
     final binding = project.findBinding(bindingId);
     final page = current!;
     final requestId = MFInstanceIdentifiers.newRequestId();
@@ -345,7 +346,7 @@ class MFRuntime {
     }, page: page, interactionId: binding.id, actionRequestId: requestId);
     _debug('action', {'binding_id': binding.id, 'action_request_id': requestId, 'route': page.definition.route});
 
-    var ctx = _context(page, props);
+    var ctx = _context(page, props, item: item);
     if (binding.guard != null) {
       final ok = _evaluator.eval(binding.guard!, ctx) == true;
       if (!ok) {
@@ -414,12 +415,15 @@ class MFRuntime {
 
   static const _evaluator = MFExprEvaluator();
 
-  EvalContext _context(MFPageInstance page, Map<String, Object?> props) => EvalContext(
+  EvalContext _context(MFPageInstance page, Map<String, Object?> props,
+          {Map<String, Object?>? item}) =>
+      EvalContext(
         state: state,
         props: props,
         params: page.params,
         prev: const {},
         providedRoots: [ProvidedScope(id: page.definition.id, values: page.provided)],
+        item: item,
       );
 
   Future<MFActionResult> _runChain(
@@ -506,13 +510,15 @@ class MFRuntime {
         // sampling come from the declaration, not from business code.
         final annotation = entry?.contract.telemetry;
         if (annotation != null) {
-          _emitAnnotated(annotation, 'entry', page, interactionId: a.call, actionRequestId: requestId);
+          _emitAnnotated(annotation, 'entry', page,
+              interactionId: a.call, actionRequestId: requestId, args: args);
         }
         final int timeout = (impl as dynamic).timeoutMs as int? ?? a.timeoutMs;
         try {
           final result = await (impl as dynamic).fn(args).timeout(Duration(milliseconds: timeout));
           if (annotation != null) {
-            _emitAnnotated(annotation, 'success', page, interactionId: a.call, actionRequestId: requestId);
+            _emitAnnotated(annotation, 'success', page,
+                interactionId: a.call, actionRequestId: requestId, args: args);
           }
           // Opaque external run reference (§24.8): recorded, never
           // interpreted; declared propagation without a returned reference is
@@ -531,12 +537,14 @@ class MFRuntime {
           diagSink.add(MFDiag(MFCodes.dataTimeout, '动作 ${a.call} 超时，进入 unknown', stage: Stage.runtime));
           recordUnknown(call: a.call, requestId: requestId, reason: 'timeout');
           if (annotation != null) {
-            _emitAnnotated(annotation, 'failure', page, interactionId: a.call, actionRequestId: requestId);
+            _emitAnnotated(annotation, 'failure', page,
+                interactionId: a.call, actionRequestId: requestId, args: args);
           }
           return const MFUnknownResult();
         } catch (err) {
           if (annotation != null) {
-            _emitAnnotated(annotation, 'failure', page, interactionId: a.call, actionRequestId: requestId);
+            _emitAnnotated(annotation, 'failure', page,
+                interactionId: a.call, actionRequestId: requestId, args: args);
           }
           return {'error': '$err'};
         }
@@ -609,14 +617,23 @@ class MFRuntime {
     MFPageInstance page, {
     String? interactionId,
     String? actionRequestId,
+    Map<String, Object?>? args,
   }) {
     final eventName = annotation.events[touchpoint];
     if (eventName == null) return;
     final ratio = annotation.samplingRatio;
     if (ratio != null && !_sampled(ratio, actionRequestId ?? interactionId ?? eventName)) return;
+    // 定向内容（§24.7）：只有注记显式声明的参数键进入 payload。
+    final payload = <String, Object?>{
+      'touchpoint': touchpoint,
+      'feature_ref': interactionId,
+      if (args != null)
+        for (final k in annotation.args)
+          if (args.containsKey(k)) k: args[k],
+    };
     _emitStandard(
       eventName,
-      {'touchpoint': touchpoint, 'feature_ref': interactionId},
+      payload,
       page: page,
       interactionId: interactionId,
       actionRequestId: actionRequestId,
@@ -635,15 +652,40 @@ class MFRuntime {
   /// Node-event dispatch (render -> runtime): resolves binding entries
   /// anchored on `<nodeId>.<event>` (§39). Business code cannot be in the
   /// path; evaluation order is declaration order (deterministic).
-  Future<void> dispatchEvent(String nodeId, String event) async {
+  ///
+  /// [payload] carries the typed event value declared by the component
+  /// contract (`value` key, §5); [item] carries the collection item context
+  /// for template-anchored events (declarative list binding).
+  Future<void> dispatchEvent(String nodeId, String event,
+      {Map<String, Object?>? payload, Map<String, Object?>? item}) async {
     final order = project.bindingsFor('$nodeId.$event');
     if (order.isEmpty) {
       return;
     }
+    // Event payload contract check (§5/§23.3): a declared payload type must
+    // accept the dispatched value; mismatch is a contract violation entering
+    // the error boundary (never silently coerced).
+    if (payload != null && payload.containsKey('value')) {
+      final page = current;
+      final node = page?.definition.tree.find(nodeId);
+      if (page != null && node != null) {
+        final contract = registry.entry(node.type)?.contract ?? project.components[node.type]?.contract;
+        final spec = contract?.events[event];
+        if (spec != null && !spec.check(payload['value'])) {
+          diagSink.add(MFDiag(MFCodes.regContractMismatch,
+              '事件 $nodeId.$event 载荷不符契约声明（§5）', stage: Stage.runtime));
+          boundaryHandler.capture(
+            MFInstanceIdentifiers.newRequestId(),
+            MFBoundaryInfo(boundaryId: 'event-contract', error: 'payload mismatch: $nodeId.$event'),
+          );
+          return;
+        }
+      }
+    }
     var boundaryThrown = false;
     for (final b in order) {
       try {
-        await execute(b.id);
+        await execute(b.id, props: payload ?? const {}, item: item);
       } catch (err) {
         boundaryThrown = true;
         // 边界归属（§13.2/§37.4）：绑定级声明优先，其次页面级默认边界，

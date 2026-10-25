@@ -100,17 +100,17 @@ class MFLocalQueryEngine {
   List<Map<String, Object?>> _groupBy(List<MFEventEnvelope> events, List<String> dimensions) {
     final counters = <String, int>{};
     for (final e in events) {
-      final key = [
-        for (final d in dimensions)
-          switch (d) {
+      String dim(String d) => switch (d) {
             'event_name' => e.eventName,
             'route' => e.route,
             'release_id' => e.releaseId,
             'page_instance_id' => e.pageInstanceId,
             'privacy_class' => e.privacyClass,
+            'session_id' => e.sessionId,
+            _ when d.startsWith('payload.') => '${e.payload[d.substring(8)]}',
             _ => '_',
-          },
-      ].join('|');
+          };
+      final key = [for (final d in dimensions) dim(d)].join('|');
       counters[key] = (counters[key] ?? 0) + 1;
     }
     return [

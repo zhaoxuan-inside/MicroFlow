@@ -1,0 +1,24 @@
+name: mf_platform_store
+description: >-
+  打卡平台与运营管理平台之间的业务层数据契约：同源 localStorage KV、
+  遥测 JSONL 接收日志（§30.1 接收端业务承载）、采集控制开关与跨标签页通知。
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.13.5
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  microflow_observability:
+    path: ../../packages/microflow_observability
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: false
