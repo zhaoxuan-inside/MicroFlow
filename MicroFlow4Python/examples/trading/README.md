@@ -40,3 +40,21 @@ PYTHONPATH=../../src python3 ops_report.py
 - 页面经 **authoring 命令面**构造（§14 `create_page` / `connect_navigation`，actor=zcode-builder）：每条命令走与发布相同的静态校验门禁，产生修改审计与可回滚修订（5 笔修订链）。页面不携带可执行逻辑（§2.9）。
 - 商品列表/购物车/下单为声明式 List 绑定 + 适配器（§40）；适配器业务语义与后端流程对齐（整数分、会员折扣），生产部署经 T14 控制面调用后端。
 - **监控数据面**：运行时拦截边界零埋点产生 `ops.page.viewed` 与采集注记事件（`ops.trade.added-to-cart` / `ops.trade.order-placed`），经遥测管道落地（mf_platform_store JSONL），供 ops_admin 运营平台收集；测试以内存 sink + 查询断言验证同一管道。
+
+## 验收部署（本地）
+
+```bash
+# 后端宿主（标准库 HTTP，ephemeral 本地演练）
+PYTHONPATH=../../src python3 server.py 8310
+# 前端 Web 构建（与 ops_admin/habit 同源部署，共享遥测采集）
+cd MicroFlow4Flutter/apps/trading_app
+flutter create . --platforms web   # 首次
+flutter build web --release --base-href=/trading/ && cp -r build/web ../deploy/trading
+python3 -m http.server 8300 --bind 127.0.0.1 -d ../deploy
+```
+
+- 交易平台前端：http://127.0.0.1:8300/trading/
+- 运营平台（收集同源遥测）：http://127.0.0.1:8300/admin/
+- 习惯示例（对照）：http://127.0.0.1:8300/habit/
+- 后端 API：`GET http://127.0.0.1:8310/health`、`POST /run/{flow_id}`、`GET /ops/report`
+

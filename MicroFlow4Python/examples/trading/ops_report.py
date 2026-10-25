@@ -27,7 +27,8 @@ def load_inputs():
     }
 
 
-def main():
+def build_report() -> dict:
+    """运行固定演练组并聚合监控/运营投影（协议 trading-ops-report-v1）。"""
     inputs = load_inputs()
     registry = discover([HERE / "trading_ops.py"])
     flows = load_json((HERE / "trading.project.json").read_text(encoding="utf-8"))["flows"]
@@ -73,7 +74,11 @@ def main():
             "orders": orders,
         },
     }
-    print(json.dumps(report, ensure_ascii=False, indent=1, sort_keys=True))
+    return report
+
+
+def main():
+    print(json.dumps(build_report(), ensure_ascii=False, indent=1, sort_keys=True))
 
 
 if __name__ == "__main__":
