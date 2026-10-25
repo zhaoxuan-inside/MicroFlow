@@ -1,7 +1,7 @@
 # MicroFlow 算法与一致性设计
 
-版本：v1.9  
-日期：2026-10-22  
+版本：v1.10  
+日期：2026-10-25  
 关联：[平台标准设计](platform-standard-design.md)、[功能技术选型](technical-selection.md)。
 
 本文规定框架内部算法、原子状态提交和失败行为，只依赖 Python 标准库。伪代码用于实现设计，不代表这些模块已经实现或完成验证。
@@ -351,3 +351,11 @@ ConfirmationEvidence 固定业务身份、完整请求摘要、原尝试来源�
 当前 `MemoryEventStore` 只用于协议测试，未接入 StateBatch、外部消息系统、消费凭据或保留清理。生产事件提供者需把意图和状态变化原子保存，并定义重试、背压、迟到事件重算及权限；平台不承诺全局顺序。
 
 调度命令的 `_batch` 已使用同一事件协议生成执行事件意图：每个 execution 的事件序号从 1 连续递增，`event_id` 仍由 execution 与稳定 command_id 派生，内容摘要绑定事件类型、状态、发布和发生时刻。状态批次同时保存旧兼容字段和协议字段，因此命令回执去重、应答丢失恢复与事件意图具有同一提交边界。
+
+## 22. 静态影响反向索引切片（2026-10-25）
+
+`microflow.impact.build_index` 从已编译 release 重建静态引用投影，协议 `microflow-impact-index-v1`：算子 ref 到引用节点有序 (flow, node, kind) 列表的映射；被嵌套流程到嵌入它的 (flow, node, kind) 列表的映射（subflow/map/loop 三类）；roots 为未被任何流程嵌套的流程。构建时用同一 Kahn/三色 DFS 检查重新验证"流程引用图无环"，使索引自身携带其遍历所依赖的不变量；编译已拒绝环，此处校验失败表示不变量被破坏而非引入新语义。
+
+查询 API 区分两类状态：注册但未被本 release 引用的算子返回空引用列表，"未被引用"是一等状态而非错误；未注册的算子 ref 与未知流程 id 报 UNKNOWN_OPERATOR / UNKNOWN_FLOW。上游闭包返回传递嵌入该流程的全部流程的确定性排序。构建与查询全部确定性：按 flow/node/ref 排序构造，输入流程清单顺序不影响索引与 release_id（规范摘要对 Map 键排序）。
+
+索引是纯静态投影，不包含运行利用、调用量或采集数据；"未被引用"仅指静态引用，不能解释为"未使用"，§14.4 的零使用/未采集区分同样适用。CLI `microflow impact <project> --ephemeral` 提供全量索引与 `--operator`/`--flow` 定向查询；`--ephemeral` 只固定本地编译边界，索引内容与执行策略无关。运行利用、关键路径、导出与保留预算仍属 T15 后续切片。

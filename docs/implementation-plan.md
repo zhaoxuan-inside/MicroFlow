@@ -148,6 +148,7 @@
 
 ### T15：完成内置分析与局部开发辅助
 
+- 状态：**进行中，静态影响反向索引与 CLI 先行切片通过（2026-10-25）**。新增 `src/microflow/impact.py`、`src/microflow/codes.py`、`tests/test_impact.py`、`tests/test_cli_system.py`；CLI 依据 `docs/design/cli-command-system-design.md` 落地先行切片 `capabilities`/`diagnostics`/`policy-check`/`schema`/`operators`（协议 `microflow-cli-v1`，`--ephemeral` 全体系规则，能力探测与诊断码注册表守卫）。运行利用、关键路径、局部上下文、`context`/`test`/`preview`/`diff`/`scaffold`/`query` 命令仍待后续切片。
 - 目标/输入：基于编译反向索引、可靠事件和公开接口提供分析及开发上下文。
 - 执行：静态引用、逻辑/实际调用、缓存/幂等/重试分母、关键路径与墙钟等待分析；分页导出和保留预算；模板、契约查询、直接上下游、影响预览、版本差异及隔离重现接口。
 - 验证/完成：并行耗时不简单累加、桶统计不冒称精确 p99；分析可定位 release；局部上下文声明遗漏并脱敏；以固定任务记录上下文规模、修改范围、回归率及修复时间。无需内置 AI 代理或模型。
@@ -319,3 +320,23 @@ checkpoint_policy 新字段进入生效策略摘要，策略固定身份随语�
 - 新增断言覆盖事件序号、协议版本和内容摘要；原有应答丢失、重复接纳、完成回执及容量故障测试继续通过。
 
 该接入仍只保存可靠意图，不执行外部投递；投递器、消费凭据、背压、迟到事件修正和生产介质验证继续属于 T10/D03。
+
+## 19. T15 静态影响索引验证记录（2026-10-25）
+
+新增 `src/microflow/impact.py` 与 `tests/test_impact.py`；扩展 `cli.py` 的 `impact` 命令与包公开导出；同步算法设计 v1.10 §22、平台标准 v1.4 §9.4/§16 及包 README。
+
+- `MicroFlow4Python/` 下 `PYTHONPATH=src python3 -m unittest discover -s tests -q`：221 项通过（Linux，CPython 3.14.4），本批新增 7 项。覆盖：多流程/多节点算子引用的完整性与确定性排序、引用流程去重、子流引用 kind（subflow/map）记录、roots 与上游闭包、描述投影确定性（乱序流程清单产生相同索引与 release_id）与独立性（修改投影不影响索引）、未注册算子/未知流程的显式错误、注册但未引用算子的空状态、CLI 全量索引、`--operator`/`--flow` 定向查询及 UNKNOWN_OPERATOR 诊断退出码。
+- `PYTHONPATH=src python3 -m microflow impact examples/quote.flow.json --ephemeral`：返回 `microflow-impact-index-v1` 投影，`roots=[quote]`；`--operator quote.calculate@1` 返回单条引用与空上游闭包，releaseId 与 check 一致。
+- 索引构建复用 `compile_graph` 的判环与确定性排序；未新增任何第三方依赖，包运行依赖仍为空。
+
+静态索引不包含运行利用数据，不能作为"未使用"结论的依据；运行利用、关键路径、局部上下文与导出仍属 T15 后续切片。平台 A01～A35 验收状态保持不变。
+
+## 20. T15 CLI 先行切片验证记录（2026-10-25）
+
+依据 `docs/design/cli-command-system-design.md` 落地先行切片：新增 `src/microflow/codes.py`（诊断码目录，协议 `microflow-diagnostics-v1`）与 `tests/test_cli_system.py`；扩展 `cli.py`（`capabilities`/`diagnostics`/`policy-check`/`schema`/`operators`）与包导出。设计文档命令状态同步更新。
+
+- `MicroFlow4Python/` 下 `PYTHONPATH=src python3 -m unittest discover -s tests -q`：227 项通过（Linux，CPython 3.14.4），本批新增 6 项。覆盖：诊断码目录与源码双向守卫（未登记码即缺陷、无死条目）、目录投影排序与稳定级别、`capabilities` 命令集合与信封、`diagnostics` 命令输出、`policy-check` 合法/非法配置层、`schema` 查询与 UNKNOWN_SCHEMA、`operators` 静态引用计数与涉及流程。
+- 冒烟：`capabilities` 返回 10 个命令目录；`diagnostics` 返回 136 个诊断码；`operators examples/quote.flow.json --ephemeral` 返回 `quote.calculate@1` 引用计数与涉及流程；`schema`/`policy-check` 输出符合信封与退出码约定。
+- 诊断码目录登记 136 个码（52 个 shared 为跨实现一致性断言目标，随一致性测试套件修订）；无新增第三方依赖。
+
+前端对齐切片：`microflow_authoring` 包新增 `mfAuthoringCapabilities()` 能力投影（协议 `mf-authoring-capabilities-v1`，对应 CLI 设计兼容契约第 5 条），守卫测试断言命令集合与实际会话方法一致。`flutter analyze` 0 issues、`flutter test` 4 项通过（authoring 包）；总包 `flutter analyze` 0 issues、`flutter test` 64 项通过，无下游回归。

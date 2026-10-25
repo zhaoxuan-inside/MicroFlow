@@ -1,96 +1,73 @@
 # MicroFlow
 
-MicroFlow 是一个以 Python 标准库为核心的业务算子与流程执行框架。它把算子契约、静态流程编译、状态协调、预算控制、业务幂等和故障边界定义成可验证的协议，再由宿主注入持久化、授权、事件投递和外部资源提供者。
+MicroFlow 是面向 VibeCoding 开发方式的业务框架**设计基线**。核心思想：把业务抽象为**业务无关的算子**与**标准结构化的编排配置**——算子行为边界固定，编排配置可静态校验、无二义性，业务边界由此锁定；框架自身只提供执行机制、状态协调与观测采集的基础协议，具体介质、分析展示与开发工具由宿主和上层注入。
 
-项目当前处于框架协议实施阶段。纯计算的本地同步流程、静态调度命令、进程内工作执行、业务幂等、未知结果确认、资源租约和事件意图已经有实现与测试；生产持久化介质、跨进程接管、真实外部副作用、事件投递和硬隔离仍需要宿主提供者与部署验证。
+**本目录只承载设计，不包含任何具体语言实现。** 设计文档对"如何用一种具体语言实现本框架"提供指导；语言实现位于子目录，以本目录设计为共同权威基线。VibeCoding 工具、AI 代理与编辑器是框架的外部使用者：框架为其提供可读、可查、可验证的结构化接口，不集成任何特定工具链。
 
-设计基线和逐项证据见 [项目文档](docs/README.md) 与 [实施计划](docs/implementation-plan.md)。Python 包的详细 API 说明见 [MicroFlow4Python/README.md](MicroFlow4Python/README.md)。
+## 核心设计思想
 
-Flutter 前端框架位于 [MicroFlow4Flutter/README.md](MicroFlow4Flutter/README.md)，当前提供项目模型、运行时导航、Flutter Renderer 入口、Debug 快照、Telemetry 收集和外部实验 Provider 契约。
+1. **算子与编排分离。** 业务步骤实现为契约明确、副作用声明、边界固定的算子；业务功能由编排配置组织算子而成。业务语义集中在少数算子设计决策处，工具侧工作被压缩为"实现算子（模式高频）"与"生成/修改配置（Schema 可校验）"两类无二义性任务。
+2. **编排配置即结构化数据。** 配置使用标准 JSON 与版本化 Schema；发布前执行静态检查（环、引用、路径、类型、策略组合），未知规则一律拒绝。表达式采用受限白名单语法，禁止 eval 与任意脚本——配置表达力刻意保持在不图灵完备的预算内。
+3. **层次分解。** 子图与算子遵守同一契约纪律（输入输出端口、错误语义、版本、独立测试），以复合算子身份参与编排，使大流程可按层阅读、按需下钻；引用而非复制，防止同一能力多处漂移。
+4. **观测分层。** 框架在运行时拦截边界产生结构化事实、日志与指标（采集内核），业务代码零埋点；汇聚、查询、看板、告警与运营分析由上层承载。事件 Schema 与算子契约同为版本化契约；普通观测故障与业务执行隔离，关键业务事件走独立可靠协议。
+5. **零依赖内核与端口注入。** 框架核心只依赖语言运行时与标准库，不引入第三方包；持久化介质、遥测接收、授权、事件投递、时钟等以框架定义的端口接口由宿主注入，能力不足时拒绝相关配置而非静默降级。适配包可携带依赖，依赖方向永远单向。
+6. **面向 VibeCoding 的适配。** 局部上下文查询、影响分析（静态反向索引）、结构化命令面、变更预览、一致性回归与机器可读验收基线，使外部工具能准确理解业务边界、局部修改并独立验证，不需要读取全项目。
+7. **诚实的能力边界。** 设计基线、实现状态与验收证据分别管理；内存替身与本地演练不冒充耐久与高可用证据，未知结果进入可判定状态而不是静默降级。
 
-## 快速开始
+## 架构总览
 
-要求 Python 3.12 或更高版本。仓库内的主要验证使用 CPython 3.14.5rc1，包括 free-threading 构建。
-
-```powershell
-cd MicroFlow4Python
-py -3.14 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\microflow.exe --help
+```text
+算子实现（六参数契约、副作用声明） ─┐
+编排配置（JSON / 版本化 Schema）  ─┤
+                                 ▼
+        编译与静态检查（环/引用/路径/类型/策略组合）  ←─ 变更影响 = 静态反向索引
+                                 ▼
+                  不可变发布快照（release_id 固定全部版本）
+                                 ▼
+ 执行层（调度/执行/熔断/恢复） ⇄ 状态协调（原子 StateBatch） ──▶ [端口] 持久化提供者（宿主注入）
+                                 │
+          观测采集内核（运行时唯一发射点：零埋点事实/指标/日志）
+                                 ▼
+        [端口] 遥测接收（业务层承载） ──▶ 上层：汇聚/查询/看板/告警/实验
 ```
 
-运行报价示例：
+框架内核不含任何第三方依赖；右侧端口全部由宿主注入，能力不足时拒绝相关配置而非静默降级。左半部分（定义→编译→快照→执行→采集）由框架承担，右半部分（介质与分析展示）由宿主与上层承担——这条分界线即"框架只提供最基础能力"的边界。
 
-```powershell
-.\.venv\Scripts\microflow.exe describe examples/quote.py
-.\.venv\Scripts\microflow.exe check examples/quote.flow.json --ephemeral
-.\.venv\Scripts\microflow.exe run examples/quote.flow.json quote examples/quote.input.json --ephemeral
-```
+## 文档阅读路径
 
-示例输出的报价总额为 `3900`。`--ephemeral` 明确表示本地内存演练，不提供耐久执行保证。
+- **理解设计思想**：本 README「核心设计思想」→ 各设计文档首章与 §2。
+- **实现算子**：平台标准设计 §6～§8（算子协议、Output 结构、注册入口）。
+- **编排与发布**：平台标准设计 §9～§11、§15～§18（DAG/子图、调用、快照、配置示例）。
+- **接入 VibeCoding 工具**：平台标准设计 §16；前端命令面见外部功能接入规范 §4。
+- **贡献新的语言实现**：通读三份后端设计文档，以 MicroFlow4Python 的结构与测试纪律为参照，遵守零依赖与端口注入纪律。
 
-## 核心接口
+## 设计文档（权威基线）
 
-本地同步执行使用 `LocalRuntime`：
+### 后端执行框架
 
-```python
-from microflow import LocalRuntime, discover
-from microflow.compiler import compile_release
-from microflow.values import load_json
-from pathlib import Path
+- [平台标准设计方案 v1.4](docs/design/platform-standard-design.md)：总体架构、算子协议、DAG/子图编排与治理纪律、同步异步与调度、异常熔断、状态与恢复、幂等与缓存、快照发布、观测与 VibeCoding 适配。
+- [框架内部功能技术选型 v1.3](docs/design/technical-selection.md)：22 项内部算法、数据结构与接口决策；介质实现不进入核心依赖。
+- [算法与一致性设计 v1.10](docs/design/algorithms-and-consistency.md)：图编译与判环、原子状态提交、恢复判定、配置合并、故障行为与静态影响反向索引。
 
-registry = discover(["examples/quote.py"])
-flows = load_json(Path("examples/quote.flow.json").read_text(encoding="utf-8"))["flows"]
-release = compile_release(registry, flows, defaults={
-    "durability": "ephemeral", "recovery": {"enabled": False}
-})
-result = LocalRuntime(release).run(
-    "quote", {"items": [{"price": 1200, "quantity": 2}]}
-)
-assert result.output["data"]["total"] == 2400
-```
+### 前端框架
 
-需要状态协议时，宿主使用 `Coordinator`、`ExecutionCommands` 和 `ScheduledRuntime`。接纳、领取、完成、取消、预算到期、根停止闩锁、后继就绪和事件意图通过 `StateBatch` 原子提交。`ScheduledRuntime` 支持有界同步线程、协程、非阻塞等待和排空；等待者超时不会取消已接纳的业务执行。
+- [前端框架完整设计方案 v1.12](docs/design/frontend-framework-design.md)：元组件/组件/图层/页面/产品模型、代码/数据/配置三平面分离、样式与主题、编译器/运行时/Renderer 边界。
+- [外部功能接入规范 v1.0](docs/design/external-capability-integration-spec.md)：宿主实现、上层工具、平台服务三类接入方的通道、交付物与验收清单。
 
-启用业务幂等后，使用 `microflow.idempotency.OperationScope` 固定租户、业务域、操作和业务键。相同业务键只保留一个物理操作；结果确认后可在契约兼容且保留期内复用，冲突或未知状态不会静默重跑。
+### 配套
 
-对于失联后的 `IN_DOUBT` 操作，宿主可注入 `ConfirmationAuthorizer` 与 `ConfirmationVerifier` 使用 `ConfirmationService` 提交授权证据。确认会重新检查原发布、绑定、业务范围、CAS 修订和授权期限，并将节点结果、账本、事件和审计同批提交；原执行停止状态不会被自动解除。
+- [文档索引](docs/README.md)
+- [CLI 命令体系设计](docs/design/cli-command-system-design.md)：面向 VibeCoding 工具的 CLI 兼容契约与命令集合（设计基线草案）。
+- [实施任务规划](docs/implementation-plan.md)：后端执行框架 T01～T16 任务状态与验证记录。
+- [一致性基线投影](docs/design/baselines.json)：前端框架 §44.3 的机器可读基线，供测试引用与覆盖表生成。
 
-资源约束使用 `LeaseRequest` / `ResourceLease`，资源键必须唯一且按字典序申请。`EventIntent` 提供稳定事件身份、聚合序号、内容摘要和 PENDING/DELIVERED 意图；实际租约服务和事件投递器由宿主注入。
+语言实现指导：后端设计文档中的协议语义与算法是语言无关的；技术选型文档里的标准库与并发机制选择按"Python 首个实现参照"理解，其他语言实现应等价替换实现机制，保持算法与协议语义不变，并同样遵守零第三方依赖约束。
 
-## 边界
+## 语言实现
 
-- 注册入口会执行可信 Python 代码，不是沙箱；不要在注册阶段连接业务资源或启动后台任务。
-- `LocalRuntime` 不支持耐久后台执行、恢复、动态控制节点、自动重试、缓存和真实资源互斥。
-- `protocol_test=True` 只允许内存协议替身，返回结果会标记为 ephemeral。
-- 框架不把状态存储与外部业务资源变成全局事务，也不宣称任意副作用恰好一次。
-- 真实提供者必须自行实现持久化、所有权隔离、授权、外部结果查询、事件投递、租约心跳和部署故障处理。
+| 子项目 | 定位 | 实现状态 |
+|---|---|---|
+| [MicroFlow4Python](MicroFlow4Python/README.md) | 后端执行框架的 Python 实现：契约驱动算子、静态编译、原子状态协调协议；核心运行依赖仅为标准库 | 本地同步闭环与状态协调协议切片已验证；耐久执行、发布与平台验收进行中 |
+| [MicroFlow4Flutter](MicroFlow4Flutter/README.md) | 前端框架的 Flutter 实现：统一资源注册、解释运行时、Tier A/B 渲染、遥测/实验/Debug 契约面 | Level 0/1 已实现，Level 2 协议面部分实现；一致性基线 21/32 覆盖 |
 
-## 验证
-
-在 `MicroFlow4Python/` 执行：
-
-```powershell
-\.venv\Scripts\python.exe -m unittest discover -s tests -q
-$env:PYTHONPATH = "src"
-py -3.14t -m unittest discover -s tests -q
-\.venv\Scripts\python.exe -m pip wheel . --no-deps --wheel-dir dist
-```
-
-最近一次协议回归为 214 项测试通过；独立 wheel 环境也已验证。测试使用内存替身和纯计算算子，不等同于生产介质、跨主机恢复或性能验收。
-
-## 文档
-
-- [设计文档索引](docs/README.md)
-- [平台标准设计](docs/design/platform-standard-design.md)
-- [技术选型](docs/design/technical-selection.md)
-- [算法与一致性设计](docs/design/algorithms-and-consistency.md)
-- [实施计划与验证记录](docs/implementation-plan.md)
-
-## Flutter 前端验证
-
-```powershell
-cd MicroFlow4Flutter
-flutter analyze
-flutter test
-```
+各实现的任务状态、验证证据与能力边界以其子目录 README 与实施记录为准；本目录设计修订不自动等于实现完成。
