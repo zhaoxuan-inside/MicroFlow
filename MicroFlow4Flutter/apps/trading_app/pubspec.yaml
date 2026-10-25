@@ -1,0 +1,27 @@
+name: trading_app
+description: >-
+  交易平台演示（纯 Web）：类似电商的交易前端，基于 MicroFlow4Flutter 解释
+  运行模式。页面由 authoring 命令面（§14 create_page/connect_navigation）
+  通过静态校验门禁构造；商品/购物车/下单适配器与后端 examples/trading 的
+  业务语义对齐；运营事件经遥测管道写入同源日志，供 ops_admin 收集。
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  microflow4_flutter:
+    path: ../../
+  mf_platform_store:
+    path: ../mf_platform_store
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -340,3 +340,15 @@ checkpoint_policy 新字段进入生效策略摘要，策略固定身份随语�
 - 诊断码目录登记 136 个码（52 个 shared 为跨实现一致性断言目标，随一致性测试套件修订）；无新增第三方依赖。
 
 前端对齐切片：`microflow_authoring` 包新增 `mfAuthoringCapabilities()` 能力投影（协议 `mf-authoring-capabilities-v1`，对应 CLI 设计兼容契约第 5 条），守卫测试断言命令集合与实际会话方法一致。`flutter analyze` 0 issues、`flutter test` 4 项通过（authoring 包）；总包 `flutter analyze` 0 issues、`flutter test` 64 项通过，无下游回归。
+
+## 21. authoring undo 修复与交易平台垂直切片验证记录（2026-10-25）
+
+**框架修复**：`microflow_authoring.MFAuthoringSession.undo` 原实现取 `_revisions[_revisions.length - _undoDepth]`，多笔修订后首次回滚会直接跳到最初状态，与 §14"回滚最近一次修订"不符。修正为 LIFO（先减 `_undoDepth` 再按其索引取最新未回滚修订的快照）。回归证据：trading_app authoring 测试（undo 后最近一页仍在，可重加被撤销的边）；authoring 包 4 项、总包 64 项测试全部通过，无行为回归。
+
+**交易平台垂直切片**（`MicroFlow4Python/examples/trading/` + `MicroFlow4Flutter/apps/trading_app/`，演示 ZCode 经框架接口构建前后端）：
+
+- 后端经 CLI 全链路构建：`check` 0 诊断通过（releaseId d82a03a4…）；`impact --operator trading.order_compose@1` 与 `--flow pricing` 正确给出子图引用链与上游闭包；`run` 三个场景 SUCCEEDED——browse（2 命中）、place_order 有货（VIP 折后 522310 分、CREATED）、缺货（BLOCKED）。交付物：5 个纯计算/读取算子、3 个流程（含 pricing 子图）、样例输入、监控/运营聚合脚本 `ops_report.py`（按算子调用量/成功率/耗时 + 订单/GMV 汇总，协议 trading-ops-report-v1）。
+- 前端经 authoring 命令面构造：3 页面（home/cart/orders）+ 5 笔修订审计链（actor=zcode-builder），静态门禁逐命令生效；List 声明式绑定 + 适配器业务语义与后端对齐；监控数据面测试断言 `ops.page.viewed` 零埋点事件经遥测管道到达 sink。`flutter analyze` 0 issues、`flutter test` 4 项通过。
+- 过程中发现并修复的测试反馈问题：output 数组不得按稀疏下标逐元素写入（SPARSE_ARRAY，改为整体写入）；绑定门禁禁止前向引用（onEnter/导航绑定随页面分批进入候选项目）。
+
+本切片为演示与集成验证，不改变平台 A01～A35 验收状态；写入型算子、耐久执行与真实提供者验证仍按原计划推进。

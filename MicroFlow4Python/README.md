@@ -58,6 +58,8 @@ assert result.output["data"]["total"] == 2400
 
 CLI 体系依据 [CLI 命令体系设计](../docs/design/cli-command-system-design.md)（协议 `microflow-cli-v1`）：stdout 只输出确定性 JSON，退出码 0=肯定/中性、1=被验证对象否定、2=请求失败；凡触发本地编译或执行的命令必须显式 `--ephemeral`。工具应先 `microflow capabilities` 探测命令目录再使用。
 
+**端到端演示**：[examples/trading/](examples/trading/README.md) —— ZCode 经 CLI 构建的交易平台垂直切片（算子 + 编排 + 子图 + 影响分析 + 监控/运营聚合），前端对应 `MicroFlow4Flutter/apps/trading_app`。
+
 | 命令 | 状态 | 用途 |
 |---|---|---|
 | `capabilities` | 已实现 | 实现标识、版本与命令目录（能力探测） |
