@@ -5,3 +5,4 @@
 /// （§2.7、§18.1），失败时项目保持不变，不产生隐式状态。
 library;
 export 'src/authoring.dart';
+export 'src/capabilities.dart';
