@@ -3,7 +3,7 @@
 版本：v1.0
 日期：2026-10-24
 状态：规划基线
-上游：`docs/design/frontend-framework-design.md`（v1.12，设计基线）
+上游：《前端框架完整设计方案》v1.12（设计基线；原文档已归档于 git 历史）
 本文角色：MicroFlow4Flutter 子项目的路线图与里程碑验收依据；修订规则见 §8。
 
 ---

@@ -5,7 +5,7 @@ unregistered code is an implementation defect (mirrors the frontend §41
 discipline). `stability` marks whether a code's semantics are asserted by the
 cross-implementation CLI conformance suite ("shared", seeded from codes named
 in the design documents) or are local to this implementation ("implementation");
-the shared set is revised together with docs/design/cli-command-system-design.md.
+the shared set is revised together with the CLI command-system design (archived in git history).
 
 The catalog is guard-tested bidirectionally against the source tree:
 tests/test_cli_system.py fails if a raised code is missing or an entry is dead.

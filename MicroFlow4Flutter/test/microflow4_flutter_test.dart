@@ -19,7 +19,7 @@ Set<File> _dartFiles(List<String> roots, {String suffix = '.dart', bool underLib
   };
 }
 
-/// 从当前目录向上回溯定位仓库内文件（baselines.json 位于 docs/design/）。
+/// 从当前目录向上回溯定位仓库内文件（baselines.json 位于 MicroFlow4Flutter/）。
 File? _locateRepoFile(String rel) {
   var dir = Directory.current.path;
   for (var i = 0; i < 4; i++) {
@@ -704,8 +704,8 @@ void main() {
   });
 
   test('基线清单机器可读，测试基线引用合法（P1 守卫）', () {
-    final file = _locateRepoFile('docs/design/baselines.json');
-    expect(file, isNotNull, reason: 'docs/design/baselines.json 必须存在于仓库（§44.3 机器可读投影）');
+    final file = _locateRepoFile('MicroFlow4Flutter/baselines.json');
+    expect(file, isNotNull, reason: 'MicroFlow4Flutter/baselines.json 必须存在于仓库（§44.3 机器可读投影）');
     final doc = jsonDecode(file!.readAsStringSync()) as Map<String, Object?>;
     final baselines = (doc['baselines'] as List).cast<Map<String, Object?>>();
     expect(baselines, hasLength(32));

@@ -1,6 +1,6 @@
 # MicroFlow4Python
 
-Python 业务算子与流程框架，核心运行依赖仅为标准库。设计与任务状态见上级 `docs/`。
+Python 业务算子与流程框架，核心运行依赖仅为标准库。设计要点见根 [README](../README.md)「实现的设计」5.1（原上级 `docs/` 设计文档已归档于 git 历史）。
 
 **开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具的任务导向指南：开发回路、算子/编排规范、证据纪律、诊断速查），参照 [`examples/trading/`](examples/trading/README.md) 端到端示例。
 
@@ -11,7 +11,7 @@ Python 业务算子与流程框架，核心运行依赖仅为标准库。设计�
 - **协议先行的状态与执行**：`LocalRuntime` 显式同步演练；`ExecutionCommands`/`ScheduledRuntime` 原子状态命令切片。持久化提供者、授权器、证据查询器、事件存储与时钟均为宿主注入端口，能力不足时显式拒绝相关配置而非静默降级。
 - **诚实的能力边界**：写入型算子、动态控制节点执行、自动恢复、硬时间隔离等未实现能力在运行前拒绝；协议切片以内存替身验证，不计为生产耐久证据。
 
-协议切片与任务状态记录见下文及上级 [实施计划](../docs/implementation-plan.md)。
+协议切片与任务状态记录见下文（原实施计划文档已归档于 git 历史）。
 
 ## 快速开始
 
@@ -58,7 +58,7 @@ assert result.output["data"]["total"] == 2400
 
 ## CLI 命令面
 
-CLI 体系依据 [CLI 命令体系设计](../docs/design/cli-command-system-design.md)（协议 `microflow-cli-v1`）：stdout 只输出确定性 JSON，退出码 0=肯定/中性、1=被验证对象否定、2=请求失败；凡触发本地编译或执行的命令必须显式 `--ephemeral`。工具应先 `microflow capabilities` 探测命令目录再使用。
+CLI 体系依据《CLI 命令体系设计》（八条兼容契约 + 17 命令封闭集合，要点见根 README 5.3；原文档归档于 git 历史；协议 `microflow-cli-v1`）：stdout 只输出确定性 JSON，退出码 0=肯定/中性、1=被验证对象否定、2=请求失败；凡触发本地编译或执行的命令必须显式 `--ephemeral`。工具应先 `microflow capabilities` 探测命令目录再使用。
 
 **端到端演示**：[examples/trading/](examples/trading/README.md) —— ZCode 经 CLI 构建的交易平台垂直切片（算子 + 编排 + 子图 + 影响分析 + 监控/运营聚合），前端对应 `MicroFlow4Flutter/apps/trading_app`。
 
@@ -81,7 +81,7 @@ CLI 体系依据 [CLI 命令体系设计](../docs/design/cli-command-system-desi
 
 状态协调与宿主提供者接口可从 `microflow.coordinator`、`microflow.persistence` 导入。`validate_provider` 校验显式注入对象的协议版本、配置 schema、绑定修订/配置摘要及能力，不负责创建提供者。固定控制请求必须提供 `request_id` 和完整命令的 `request_digest`；重复请求返回已保存结果。提交结果未知期间，协调器拒绝继续写入并查询原请求。
 
-`microflow.testing.MemoryStateStore` 是有界内存协议替身，供单元测试使用；不提供耐久确认、租约到期或跨进程恢复。分页查询固定首个视图的修订号；取得续页游标后，读取完成仍需调用 `close_cursor` 释放快照。当前 LocalRuntime 尚未连接该状态协议，耐久运行仍在实施中。最新范围与测试证据见 `docs/implementation-plan.md`。
+`microflow.testing.MemoryStateStore` 是有界内存协议替身，供单元测试使用；不提供耐久确认、租约到期或跨进程恢复。分页查询固定首个视图的修订号；取得续页游标后，读取完成仍需调用 `close_cursor` 释放快照。当前 LocalRuntime 尚未连接该状态协议，耐久运行仍在实施中。最新范围与测试证据见本 README 及 git 历史中的实施计划。
 
 ## 策略、检查点与影响索引
 

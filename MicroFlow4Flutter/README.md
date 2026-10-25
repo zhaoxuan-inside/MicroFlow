@@ -1,6 +1,6 @@
 # MicroFlow4Flutter
 
-MicroFlow Frontend 的 Flutter 实现（对齐 `docs/design/frontend-framework-design.md` v1.12）。
+MicroFlow Frontend 的 Flutter 实现（对齐《前端框架完整设计方案》v1.12，原文档已归档于 git 历史；设计要点见根 README「实现的设计」5.2）。
 
 **开发入口**：新任务先读 [开发手册](DEVELOPER_GUIDE.md)（面向开发者与 VibeCoding 工具：两条开发路径、页面/绑定/主题/布局规范、观测与门禁纪律、诊断速查），参照 `apps/trading_app`（authoring 命令面构造的完整示例）。
 
@@ -72,7 +72,7 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
 
 ## 一致性基线覆盖（机器可读）
 
-基线单一来源为 [`docs/design/baselines.json`](../docs/design/baselines.json)（§44.3 的机器可读投影，
+基线单一来源为 [`baselines.json`](baselines.json)（§44.3 的机器可读投影，
 不引入新语义）。测试名称以「基线 N」标记覆盖条目，「部分」后缀表示仅覆盖可静态/本地判定子集；
 守卫测试保证引用合法与诊断码单一来源（§41.3）。覆盖表由工具生成，勿手工编辑：
 

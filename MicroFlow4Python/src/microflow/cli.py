@@ -17,7 +17,7 @@ from .impact import (build_index, describe_index, describe_references, flow_refe
                      operator_flows, operator_references, upstream_flows)
 from .codes import describe_diagnostics
 
-# Machine-readable command catalog (design: docs/design/cli-command-system-design.md §3).
+# Machine-readable command catalog (design: CLI 命令体系设计 §3, archived in git history).
 # resultKeys are the command-specific envelope keys; ephemeral records whether the
 # command requires or rejects the explicit local boundary flag.
 CAPABILITIES = {

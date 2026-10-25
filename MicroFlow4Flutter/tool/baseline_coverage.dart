@@ -1,8 +1,8 @@
-// 一致性基线覆盖率工具（P1，docs/design/baselines.json 的消费方）。
+// 一致性基线覆盖率工具（P1，MicroFlow4Flutter/baselines.json 的消费方）。
 //
 // 扫描本仓库全部 Dart 测试文件中测试名称的「基线 N」标记
 // （如「基线 13、15」；名称含「部分」时该条目标记为部分覆盖），
-// 对照 docs/design/baselines.json 输出 Markdown 覆盖表。
+// 对照 MicroFlow4Flutter/baselines.json 输出 Markdown 覆盖表。
 //
 // 用法（仓库根或 MicroFlow4Flutter/ 下均可）：
 //   dart run tool/baseline_coverage.dart
@@ -12,9 +12,9 @@ import 'dart:convert';
 import 'dart:io';
 
 void main() {
-  final baselineFile = _locate('docs/design/baselines.json');
+  final baselineFile = _locate('MicroFlow4Flutter/baselines.json');
   if (baselineFile == null) {
-    stderr.writeln('未找到 docs/design/baselines.json（从当前目录向上回溯）');
+    stderr.writeln('未找到 MicroFlow4Flutter/baselines.json（从当前目录向上回溯）');
     exit(2);
   }
   final Map<String, Object?> doc;

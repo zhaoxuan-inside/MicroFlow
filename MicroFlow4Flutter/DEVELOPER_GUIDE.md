@@ -1,6 +1,6 @@
 # MicroFlow4Flutter 开发手册
 
-面向两类读者：**应用开发者**（用框架构建产品的业务层）与 **VibeCoding 工具/AI 代理**（经结构化命令面操作项目模型）。本手册是任务导向的操作指南；语义以 [`docs/design/frontend-framework-design.md`](../docs/design/frontend-framework-design.md)（下称"基线设计"）为权威，实现分级与边界以 [README](README.md) 的如实声明为准。
+面向两类读者：**应用开发者**（用框架构建产品的业务层）与 **VibeCoding 工具/AI 代理**（经结构化命令面操作项目模型）。本手册是任务导向的操作指南；语义以《前端框架完整设计方案》（v1.12，下称"基线设计"；原文档已归档于 git 历史，要点浓缩于根 README「实现的设计」5.2）为权威，实现分级与边界以 [README](README.md) 的如实声明为准。
 
 ## 1. 五分钟心智模型
 
