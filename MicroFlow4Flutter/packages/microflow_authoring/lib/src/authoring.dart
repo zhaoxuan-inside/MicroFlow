@@ -314,9 +314,12 @@ class MFAuthoringSession {
   /// 回滚最近一次修订（§14 可回滚修订）：恢复修订前的项目模型；
   /// 审计记录保留，继续追加新修订时旧审计仍在。
   MFProject? undo() {
+    // LIFO 回滚最近一次修订（§14）：_undoDepth 是未回滚修订数，先减再按
+    // 该索引取"最新一笔未回滚修订"的快照。旧实现取 _revisions[len-depth]
+    // 首次回滚会直接跳到最初状态，与"回滚最近一次修订"不符。
     if (_undoDepth == 0) return null;
-    final last = _revisions[_revisions.length - _undoDepth];
     _undoDepth--;
+    final last = _revisions[_undoDepth];
     _current = last.snapshotBefore;
     return _current;
   }
