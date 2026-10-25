@@ -1,0 +1,12 @@
+# Dart / Flutter 构建产物
+.dart_tool/
+build/
+.idea/
+*.iml
+# 部署构建产物（flutter build web 输出，按需本地重新生成）
+MicroFlow4Flutter/apps/deploy/
+# Python
+__pycache__/
+*.pyc
+.venv/
+dist/
