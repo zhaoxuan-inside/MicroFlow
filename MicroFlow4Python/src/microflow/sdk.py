@@ -50,6 +50,10 @@ class Output:
     def reject(self, code="OPERATOR_REJECTED", message="Operator reported failure"):
         self._rejection = {"code": code, "message": message}
 
+    @property
+    def rejection(self):
+        return self._rejection
+
 
 @dataclass(frozen=True)
 class Context:

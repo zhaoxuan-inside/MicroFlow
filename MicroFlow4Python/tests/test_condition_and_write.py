@@ -35,8 +35,8 @@ def writer(input, output, context, metrix, debug, log):
 
 
 def rejecting_with_reason(input, output, context, metrix, debug, log):
-    output.set("message", "库存不足")
     output.set("error_type", "ValueError")
+    output.reject(message="库存不足")
     return False
 
 
@@ -136,6 +136,30 @@ class ConditionTests(unittest.TestCase):
         self.assertEqual(result.output["meta"]["status"], "FAILED")
         self.assertEqual(result.output["error"]["code"], "MISSING_CONDITION_VALUE")
 
+    def test_all_predecessors_skipped_propagates(self):
+        """A node whose whole depends_on set was skipped is skipped too."""
+        nodes = {"check": flow()["nodes"]["check"],
+                 "gate_a": {"operator": "increment@1", "condition": {"truthy": "nodes.check.output.data.flag"},
+                            "inputs": {"n": {"from": "flow.input.n"}}},
+                 "downstream": {"operator": "increment@1", "depends_on": ["gate_a"],
+                                "inputs": {"n": {"from": "flow.input.n"}}}}
+        result = run(nodes, {"n": -1})
+        self.assertEqual(result.nodes["gate_a"]["meta"]["status"], "SKIPPED")
+        self.assertEqual(result.nodes["downstream"]["meta"]["status"], "SKIPPED")
+        self.assertEqual(result.output["meta"]["status"], "SUCCEEDED")
+
+    def test_partial_skipped_predecessors_still_execute(self):
+        """A node with at least one live predecessor keeps executing."""
+        nodes = {"check": flow()["nodes"]["check"],
+                 "gate_a": {"operator": "increment@1", "condition": {"truthy": "nodes.check.output.data.flag"},
+                            "inputs": {"n": {"from": "flow.input.n"}}},
+                 "always": {"operator": "increment@1", "inputs": {"n": {"from": "flow.input.n"}}},
+                 "join": {"operator": "increment@1", "depends_on": ["gate_a", "always"],
+                          "inputs": {"n": {"from": "flow.input.n"}}}}
+        result = run(nodes, {"n": -1})
+        self.assertEqual(result.nodes["gate_a"]["meta"]["status"], "SKIPPED")
+        self.assertEqual(result.nodes["join"]["meta"]["status"], "SUCCEEDED")
+
     def test_condition_on_subflow_node_is_rejected(self):
         reg = registry()
         nested = {"id": "nested", "input_schema": "ints", "output_schema": "ints", "nodes": {
@@ -200,7 +224,8 @@ class RejectionReasonTests(unittest.TestCase):
         result = asyncio.run(LocalRuntime(release).run_async("rej", {"n": 1}))
         self.assertEqual(result.output["meta"]["status"], "FAILED")
         self.assertEqual(result.output["error"]["code"], "OPERATOR_REJECTED")
-        self.assertEqual(result.nodes["gate"]["data"], {"message": "库存不足", "error_type": "ValueError"})
+        self.assertEqual(result.output["error"]["message"], "库存不足")
+        self.assertEqual(result.nodes["gate"]["data"], {"error_type": "ValueError"})
 
 
 if __name__ == "__main__":

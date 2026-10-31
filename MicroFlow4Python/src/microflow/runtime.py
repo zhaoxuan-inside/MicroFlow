@@ -188,9 +188,12 @@ class LocalRuntime:
                 status, data_result = "SUCCEEDED", thaw(output.data)
             elif error is None:
                 error = _error("OPERATOR_REJECTED", "main")
-                # Business rejection keeps the reason the operator wrote into
-                # output.data (the documented contract); hosts read it from the
-                # node result instead of parsing the redacted error envelope.
+                # The operator's structured rejection (Output.reject) carries the
+                # business message into the error envelope; output.data written
+                # alongside it stays available on the node result for hosts.
+                rejection = output.rejection
+                if rejection:
+                    error = {**error, "message": str(rejection.get("message") or error["message"])}
                 if output.data:
                     data_result = thaw(output.data)
         except Cancelled:
@@ -240,6 +243,7 @@ class LocalRuntime:
                         "flowInstanceId": state["root_id"]}
         local_nodes = {}
         error, status = None, "SUCCEEDED"
+        skipped_nodes: set[str] = set()
         ancestor_deadline = state["deadline"]
         try:
             validate(data, self.release.registry.schemas[definition["input_schema"]], "flow.input")
@@ -255,8 +259,16 @@ class LocalRuntime:
                 key = prefix + name
                 if state["stop"] or error or state["cancel"].is_set():
                     state["nodes"][key] = {"data": None, "meta": {"status": "SKIPPED"}, "error": None}
+                    skipped_nodes.add(name)
                     if state["cancel"].is_set() and error is None:
                         status, error = "CANCELLED", _error("CANCELLED", "execution")
+                    continue
+                # Skip propagation: a node whose entire declared dependency set was
+                # skipped cannot contribute anything either (conditional branches).
+                deps = node.get("depends_on") or []
+                if deps and all(dep in skipped_nodes for dep in deps):
+                    state["nodes"][key] = {"data": None, "meta": {"status": "SKIPPED"}, "error": None}
+                    skipped_nodes.add(name)
                     continue
                 policy = plan.policies[name]
                 kind = node.get("type", "operator")
@@ -276,6 +288,7 @@ class LocalRuntime:
                         continue
                     if gated:
                         state["nodes"][key] = {"data": None, "meta": {"status": "SKIPPED"}, "error": None}
+                        skipped_nodes.add(name)
                         continue
                 try:
                     mapped = map_values(node.get("inputs", {}), sources)
