@@ -188,6 +188,11 @@ class LocalRuntime:
                 status, data_result = "SUCCEEDED", thaw(output.data)
             elif error is None:
                 error = _error("OPERATOR_REJECTED", "main")
+                # Business rejection keeps the reason the operator wrote into
+                # output.data (the documented contract); hosts read it from the
+                # node result instead of parsing the redacted error envelope.
+                if output.data:
+                    data_result = thaw(output.data)
         except Cancelled:
             status, error = "CANCELLED", _error("CANCELLED", "execution")
         except ContractError as exc:

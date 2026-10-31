@@ -34,6 +34,12 @@ def writer(input, output, context, metrix, debug, log):
     return True
 
 
+def rejecting_with_reason(input, output, context, metrix, debug, log):
+    output.set("message", "库存不足")
+    output.set("error_type", "ValueError")
+    return False
+
+
 def registry():
     result = Registry()
     result.register_schema("ints", INTEGER_MAP)
@@ -178,6 +184,23 @@ class WriteEffectTests(unittest.TestCase):
         release = compile_release(reg, [write_flow()], defaults=EPHEMERAL)
         result = asyncio.run(LocalRuntime(release, allow_write=True).run_async("writing", {"n": 1}))
         thaw(result.output)
+
+
+class RejectionReasonTests(unittest.TestCase):
+    def test_business_rejection_publishes_reason_data(self):
+        """False return keeps output.data as the node result (documented contract)."""
+        reg = registry()
+        reg.register_operator(name="rejector", version="1", method=rejecting_with_reason,
+                              input_schema="ints", output_schema="ints")
+        flow_def = {"id": "rej", "input_schema": "ints", "output_schema": "ints", "nodes": {
+            "gate": {"operator": "rejector@1",
+                     "inputs": {"n": {"from": "flow.input.n", "required": True}}}},
+            "outputs": {"n": {"from": "nodes.gate.output.data.n", "required": True}}}
+        release = compile_release(reg, [flow_def], defaults=EPHEMERAL)
+        result = asyncio.run(LocalRuntime(release).run_async("rej", {"n": 1}))
+        self.assertEqual(result.output["meta"]["status"], "FAILED")
+        self.assertEqual(result.output["error"]["code"], "OPERATOR_REJECTED")
+        self.assertEqual(result.nodes["gate"]["data"], {"message": "库存不足", "error_type": "ValueError"})
 
 
 if __name__ == "__main__":
