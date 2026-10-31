@@ -14,6 +14,7 @@ import time
 import uuid
 
 from .errors import Cancelled, ContractError
+from . import expressions
 from .paths import map_values
 from .policy import seconds
 from .schema import validate
@@ -47,9 +48,12 @@ class LocalRuntime:
     independent. This runner intentionally rejects policies it cannot honor.
     """
 
-    def __init__(self, release, *, resources=None):
+    def __init__(self, release, *, resources=None, allow_write=False):
         self.release = release
         self.resources = dict(resources or {})
+        # Write-effect operators execute only when the host consciously opts in;
+        # every accepted write invocation then emits an auditable lifecycle record.
+        self.allow_write = bool(allow_write)
         self._checked_flows = set()
 
     def _preflight(self, flow_id):
@@ -69,8 +73,14 @@ class LocalRuntime:
             for name, node in plan.definition["nodes"].items():
                 kind = node.get("type", "operator")
                 policy = plan.policies[name]
-                if kind not in ("operator", "subflow", "join") or "condition" in node:
-                    raise ContractError("UNSUPPORTED_LOCAL_NODE", "Local runner supports static DAGs only", name)
+                if kind not in ("operator", "subflow", "join") or ("condition" in node and kind != "operator"):
+                    raise ContractError("UNSUPPORTED_LOCAL_NODE",
+                                        "Local runner supports static DAGs; conditions on operator nodes only", name)
+                if kind == "operator" and not self.allow_write:
+                    operator = self.release.registry.operators[node["operator"]]
+                    if operator.capabilities.get("effect") == "write":
+                        raise ContractError("WRITE_EFFECT_NOT_ALLOWED",
+                                            "Write operators require an explicit allow_write runtime", name)
                 if (policy["durability"] != "ephemeral" or policy["execution_mode"] != "sync"
                         or policy["recovery"]["enabled"] or policy["idempotency"]["enabled"]
                         or policy["cache"]["enabled"] or policy["retry"]["max_attempts"] != 1
@@ -193,6 +203,11 @@ class LocalRuntime:
             await on_result(result)
         self._record(state, "attempt_finished", options, status=status, resolution=resolution,
                      durationMs=(time.monotonic() - started) * 1000, errorCode=error["code"] if error else None)
+        # Declared side effects are auditable: one record per write invocation,
+        # consumed by the host for its audit trail (no durability is claimed).
+        if op.capabilities.get("effect") == "write":
+            self._record(state, "write_effect_invoked", options, status=status, resolution=resolution,
+                         errorCode=error["code"] if error else None)
         # Always record the base lifecycle before optional diagnostic handlers.
         for role in ("metrix", "log"):
             handler = getattr(op, role)
@@ -239,10 +254,26 @@ class LocalRuntime:
                         status, error = "CANCELLED", _error("CANCELLED", "execution")
                     continue
                 policy = plan.policies[name]
+                kind = node.get("type", "operator")
                 sources = {"flow": {"input": data}, "nodes": local_nodes, "context": {"options": flow_options}}
+                if kind == "operator" and "condition" in node:
+                    # A false condition skips the node without failing the flow. The
+                    # skipped node stays absent from local_nodes, so chained conditions
+                    # observe it as missing (exists/truthy evaluate to False) and
+                    # non-required mappings downstream simply omit the value.
+                    try:
+                        gated = not expressions.evaluate(node["condition"], sources)
+                    except ContractError as exc:
+                        output = {"data": None, "meta": {"status": "FAILED"},
+                                  "error": _error(exc.diagnostic.error_code, "condition", exc)}
+                        state["nodes"][key] = output
+                        status, error = output["meta"]["status"], output["error"]
+                        continue
+                    if gated:
+                        state["nodes"][key] = {"data": None, "meta": {"status": "SKIPPED"}, "error": None}
+                        continue
                 try:
                     mapped = map_values(node.get("inputs", {}), sources)
-                    kind = node.get("type", "operator")
                     if kind == "operator":
                         output = await self._operator(self.release.registry.operators[node["operator"]], mapped,
                                                       policy, state, flow_options, invocation)

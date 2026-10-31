@@ -19,6 +19,8 @@ def check(expression):
         check(args)
     elif op == "exists":
         parse(args)
+    elif op == "truthy":
+        parse(args)
     elif op in ("eq", "ne", "lt", "lte", "gt", "gte", "in"):
         if not isinstance(args, (tuple, list)) or len(args) != 2:
             raise ContractError("INVALID_CONDITION", "Comparison needs two operands")
@@ -41,6 +43,9 @@ def evaluate(expression, sources):
         return not evaluate(args, sources)
     if op == "exists":
         return get(sources, args) is not MISSING
+    if op == "truthy":
+        value = get(sources, args)
+        return value is not MISSING and bool(value)
     left, right = [get(sources, a["path"]) if isinstance(a, Mapping) else a for a in args]
     if left is MISSING or right is MISSING:
         raise ContractError("MISSING_CONDITION_VALUE", "Comparison operand is missing")
@@ -61,7 +66,7 @@ def evaluate(expression, sources):
 def paths(expression):
     if isinstance(expression, Mapping):
         for k, v in expression.items():
-            if k in ("path", "exists"):
+            if k in ("path", "exists", "truthy"):
                 yield v
             else:
                 yield from paths(v)
