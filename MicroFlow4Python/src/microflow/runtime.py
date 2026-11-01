@@ -273,6 +273,7 @@ class LocalRuntime:
                 policy = plan.policies[name]
                 kind = node.get("type", "operator")
                 sources = {"flow": {"input": data}, "nodes": local_nodes, "context": {"options": flow_options}}
+                node_started = time.monotonic()
                 if kind == "operator" and "condition" in node:
                     # A false condition skips the node without failing the flow. The
                     # skipped node stays absent from local_nodes, so chained conditions
@@ -302,6 +303,9 @@ class LocalRuntime:
                 except ContractError as exc:
                     output = {"data": None, "meta": {"status": "FAILED"},
                               "error": _error(exc.diagnostic.error_code, "mapping", exc)}
+                # Node-level wall duration (host consoles render honest waterfalls;
+                # per-node 0 would be a fabricated timeline).
+                output["meta"]["durationMs"] = round((time.monotonic() - node_started) * 1000, 3)
                 state["nodes"][key] = output
                 local_nodes[name] = {"output": output}
                 if output["meta"]["status"] != "SUCCEEDED":
