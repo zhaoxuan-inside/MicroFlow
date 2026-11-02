@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import { Badge, Button } from "./primitives";
 import { useToast } from "./overlay";
 

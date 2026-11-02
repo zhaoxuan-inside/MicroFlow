@@ -12,7 +12,7 @@ import {
   onScopeChange,
   setScope as persistScope,
   type ConsoleScope,
-} from "@opchub/console-api";
+} from "@microflow4kit/api";
 import { Badge, Button, Card, CardContent, cn } from "./primitives";
 
 interface RoleSummary {

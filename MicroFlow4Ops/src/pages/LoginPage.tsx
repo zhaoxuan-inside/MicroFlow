@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { dispatch, setToken } from "@opchub/console-api";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@opchub/console-ui";
+import { dispatch, setToken } from "@microflow4kit/api";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@microflow4kit/ui";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -32,7 +32,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-base">OpcHub 运维平台</CardTitle>
+          <CardTitle className="text-base">MicroFlow 运维平台</CardTitle>
           <p className="text-xs text-muted-foreground">使用平台账号登录</p>
         </CardHeader>
         <CardContent>

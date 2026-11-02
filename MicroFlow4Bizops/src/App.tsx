@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { ThemeProvider, ScopeProvider } from "@opchub/console-ui";
-import { UsersPage, TenantsPage, ProjectsPage, RolesPage } from "@opchub/console-admin";
+import { ThemeProvider, ScopeProvider } from "@microflow4kit/ui";
+import { UsersPage, TenantsPage, ProjectsPage, RolesPage } from "@microflow4kit/admin";
 import { AppShell } from "./shell/AppShell";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";

@@ -1,11 +1,11 @@
 /** 调试工作台：选择场景 → 入参 JSON → 执行 → 结果与节点迹（平台管理员视角）。 */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Field,
   PageHeader, PermissionGate, Select, Spinner, Textarea, useToast,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 interface ExecuteResult {
   status: string;

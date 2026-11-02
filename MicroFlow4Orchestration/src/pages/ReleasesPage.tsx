@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Badge,
   Button,
@@ -14,8 +14,8 @@ import {
   PageHeader,
   Spinner,
   cn,
-} from "@opchub/console-ui";
-import { diffLines } from "@opchub/console-ui";
+} from "@microflow4kit/ui";
+import { diffLines } from "@microflow4kit/ui";
 
 interface VersionRow {
   version: string;

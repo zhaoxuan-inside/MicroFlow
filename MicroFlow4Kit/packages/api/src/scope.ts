@@ -4,7 +4,9 @@
  * dispatch() 自动把 tenant_id/project_id 注入请求 context，后端网关据此做
  * scope 隔离授权。切换时广播 window 事件，便于 React Query 重新拉取。
  */
-const SCOPE_KEY = "opchub_console_scope";
+import { host } from "./host";
+
+const SCOPE_KEY = host.scopeKey;
 
 export interface ConsoleScope {
   tenantId: string;
@@ -31,16 +33,16 @@ export function getScope(): ConsoleScope {
 
 export function setScope(scope: ConsoleScope) {
   localStorage.setItem(SCOPE_KEY, JSON.stringify(scope));
-  window.dispatchEvent(new CustomEvent("opchub:scope-changed", { detail: scope }));
+  window.dispatchEvent(new CustomEvent(`${host.eventNamespace}:scope-changed`, { detail: scope }));
 }
 
 export function clearScope() {
   localStorage.removeItem(SCOPE_KEY);
-  window.dispatchEvent(new CustomEvent("opchub:scope-changed", { detail: { ...EMPTY_SCOPE } }));
+  window.dispatchEvent(new CustomEvent(`${host.eventNamespace}:scope-changed`, { detail: { ...EMPTY_SCOPE } }));
 }
 
 export function onScopeChange(cb: (scope: ConsoleScope) => void): () => void {
   const handler = (event: Event) => cb((event as CustomEvent<ConsoleScope>).detail || getScope());
-  window.addEventListener("opchub:scope-changed", handler);
-  return () => window.removeEventListener("opchub:scope-changed", handler);
+  window.addEventListener(`${host.eventNamespace}:scope-changed`, handler);
+  return () => window.removeEventListener("mf-console:scope-changed", handler);
 }

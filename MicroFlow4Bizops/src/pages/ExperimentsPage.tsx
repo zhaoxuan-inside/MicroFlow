@@ -1,11 +1,11 @@
 /** 实验读出：按实验键读取真实分配与结果指标聚合（平台管理员视角跨项目读取）。 */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Field,
   Input, PageHeader, PermissionGate, Spinner,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 interface Readout {
   experiment: { key: string; name: string; status: string; traffic_percent: number };

@@ -1,11 +1,11 @@
 /** 留存：操作者×日活跃矩阵（真实审计足迹）+ D1/D7 复访率。 */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Field,
   PageHeader, PermissionGate, Select, Spinner,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 interface Retention {
   days: string[];

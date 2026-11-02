@@ -5,8 +5,8 @@
  */
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
-import { PermissionGate, useScope } from "@opchub/console-ui";
+import { dispatch } from "@microflow4kit/api";
+import { PermissionGate, useScope } from "@microflow4kit/ui";
 import {
   Badge,
   Button,
@@ -19,7 +19,7 @@ import {
   PageHeader,
   Spinner,
   cn,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 const th = "px-4 py-2.5 text-left text-xs font-medium text-muted-foreground";
 const td = "px-4 py-2.5 align-middle";

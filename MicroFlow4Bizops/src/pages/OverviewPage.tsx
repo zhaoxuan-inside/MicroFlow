@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { dispatch } from "@opchub/console-api";
-import { Card, CardContent, CardHeader, CardTitle, PageHeader, PermissionGate, Spinner } from "@opchub/console-ui";
+import { dispatch } from "@microflow4kit/api";
+import { Card, CardContent, CardHeader, CardTitle, PageHeader, PermissionGate, Spinner } from "@microflow4kit/ui";
 
 interface Overview {
   entities: Record<string, number>;

@@ -4,7 +4,9 @@
  * envelope {code, data, message}; the session token rides both the
  * Authorization header and the context payload, mirroring the main app.
  */
-const TOKEN_KEY = "opchub_session_token";
+import { host } from "./host";
+
+const TOKEN_KEY = host.tokenKey;
 
 import { getScope } from "./scope";
 
@@ -42,7 +44,7 @@ export async function dispatch<T = any>(
   if (scope.tenantId) context.tenant_id = scope.tenantId;
   if (scope.projectId) context.project_id = scope.projectId;
   if (scope.envKey) context.env_key = scope.envKey;
-  const res = await fetch("/api/welcom/opc_world", {
+  const res = await fetch(host.endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

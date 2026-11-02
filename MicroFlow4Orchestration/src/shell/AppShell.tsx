@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { clearToken, getToken, dispatch } from "@opchub/console-api";
-import { Button, PermissionGate, ScopeEmptyHint, ScopeSwitcher, useTheme, useScope } from "@opchub/console-ui";
+import { clearToken, getToken, dispatch } from "@microflow4kit/api";
+import { Button, PermissionGate, ScopeEmptyHint, ScopeSwitcher, useTheme, useScope } from "@microflow4kit/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
@@ -47,7 +47,7 @@ export function AppShell() {
     <div className="flex min-h-screen">
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
         <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-          <span className="text-sm font-semibold tracking-tight">OpcHub 编排管理</span>
+          <span className="text-sm font-semibold tracking-tight">MicroFlow 编排管理</span>
         </div>
         <nav className="flex-1 space-y-0.5 p-3">
           {NAV.map((item) => (

@@ -14,24 +14,24 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@opchub/console-ui": [
-        "../packages/ui/src/index.ts"
+      "@microflow4kit/ui": [
+        "../MicroFlow4Kit/packages/ui/src/index.ts"
       ],
-      "@opchub/console-ui/*": [
-        "../packages/ui/src/*"
+      "@microflow4kit/ui/*": [
+        "../MicroFlow4Kit/packages/ui/src/*"
       ],
-      "@opchub/console-api": [
-        "../packages/api/src/index.ts"
+      "@microflow4kit/api": [
+        "../MicroFlow4Kit/packages/api/src/index.ts"
       ],
-      "@opchub/console-admin": [
-        "../packages/admin/src/index.tsx"
+      "@microflow4kit/admin": [
+        "../MicroFlow4Kit/packages/admin/src/index.tsx"
       ]
     }
   },
   "include": [
     "src",
-    "../packages/ui/src",
-    "../packages/api/src",
-    "../packages/admin/src"
+    "../MicroFlow4Kit/packages/ui/src",
+    "../MicroFlow4Kit/packages/api/src",
+    "../MicroFlow4Kit/packages/admin/src"
   ]
 }

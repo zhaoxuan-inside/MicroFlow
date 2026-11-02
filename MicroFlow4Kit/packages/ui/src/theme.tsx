@@ -8,11 +8,11 @@ const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem("opchub_console_theme") as Theme) || "light",
+    () => (localStorage.getItem("mf_console_theme") as Theme) || "light",
   );
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
-    localStorage.setItem("opchub_console_theme", theme);
+    localStorage.setItem("mf_console_theme", theme);
   }, [theme]);
   return (
     <ThemeContext.Provider

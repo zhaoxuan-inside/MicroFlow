@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Badge,
   Button,
@@ -25,7 +25,7 @@ import {
   diffLines,
   useScope,
   useToast,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 interface Namespace {
   key: string;

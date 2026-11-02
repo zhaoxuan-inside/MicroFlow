@@ -7,9 +7,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      "@opchub/console-ui": path.resolve(__dirname, "../packages/ui/src/index.ts"),
-      "@opchub/console-api": path.resolve(__dirname, "../packages/api/src/index.ts"),
-      "@opchub/console-admin": path.resolve(__dirname, "../packages/admin/src/index.tsx"),
+      "@microflow4kit/ui": path.resolve(__dirname, "../MicroFlow4Kit/packages/ui/src/index.ts"),
+      "@microflow4kit/api": path.resolve(__dirname, "../MicroFlow4Kit/packages/api/src/index.ts"),
+      "@microflow4kit/admin": path.resolve(__dirname, "../MicroFlow4Kit/packages/admin/src/index.tsx"),
     },
   },
   server: {

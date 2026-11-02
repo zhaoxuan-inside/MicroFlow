@@ -3,7 +3,7 @@
  * 写操作统一 {action, payload} 双层信封（catalog_write_adapter 契约），
  * 由 OPC_ORCHESTRATION_CATALOG_PIPELINE 执行；读操作直连 catalog.* 场景。
  */
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 
 export type AssetKind = "operator" | "subgraph" | "scenario";
 

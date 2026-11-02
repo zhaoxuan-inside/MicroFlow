@@ -1,5 +1,5 @@
 {
-  "name": "opchub-console",
+  "name": "microflow4kit",
   "private": true,
   "scripts": {
     "install:orchestration": "npm install --prefix orchestration",

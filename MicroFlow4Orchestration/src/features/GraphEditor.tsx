@@ -18,7 +18,7 @@ import {
   type EdgeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Badge, Button, cn } from "@opchub/console-ui";
+import { Badge, Button, cn } from "@microflow4kit/ui";
 import { inferNodeType, type GraphEdge, type GraphNode } from "./catalog";
 
 const NODE_W = 190;

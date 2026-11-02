@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   AssetLockBanner,
   Badge,
@@ -26,7 +26,7 @@ import {
   useAssetLock,
   useScope,
   useToast,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 import { AssetVersions } from "./AssetVersions";
 import { GraphEditor, type EditorGraph, type PaletteItem } from "./GraphEditor";
 import { catalogWrite, type AssetKind, type CatalogAsset } from "./catalog";

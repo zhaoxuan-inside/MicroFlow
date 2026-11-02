@@ -1,0 +1,23 @@
+name: support-platforms
+on:
+  push:
+    paths: ["MicroFlow4Orchestration/**", "MicroFlow4Ops/**", "MicroFlow4Bizops/**", "MicroFlow4Kit/**"]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [MicroFlow4Orchestration, MicroFlow4Ops, MicroFlow4Bizops]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install kit deps
+        run: npm install --prefix MicroFlow4Kit --no-bin-links
+      - name: Install app deps
+        run: npm install --prefix ${{ matrix.app }} --no-bin-links
+      - name: Typecheck & build
+        run: |
+          cd ${{ matrix.app }}
+          node node_modules/typescript/bin/tsc -b
+          node node_modules/vite/bin/vite.js build

@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Badge,
   Button,
@@ -23,7 +23,7 @@ import {
   Spinner,
   useScope,
   useToast,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 const statusTone: Record<string, "neutral" | "success" | "warning" | "destructive" | "primary"> = {
   DRAFT: "warning",

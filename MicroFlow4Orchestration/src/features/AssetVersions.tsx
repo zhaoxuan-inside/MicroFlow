@@ -4,8 +4,8 @@
  * 提交审批无需持锁（审批通过时以发起人身份执行，届时须仍持有编辑锁）。
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { PermissionGate, useToast } from "@opchub/console-ui";
-import { Badge, Button, EmptyState } from "@opchub/console-ui";
+import { PermissionGate, useToast } from "@microflow4kit/ui";
+import { Badge, Button, EmptyState } from "@microflow4kit/ui";
 import { catalogWrite, versionTone, type AssetKind, type AssetVersion } from "./catalog";
 
 export function AssetVersions({

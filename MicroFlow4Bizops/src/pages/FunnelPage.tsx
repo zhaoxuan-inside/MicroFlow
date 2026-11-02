@@ -2,11 +2,11 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Field,
   PageHeader, PermissionGate, Select, useToast,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 interface FunnelStep {
   step: string;

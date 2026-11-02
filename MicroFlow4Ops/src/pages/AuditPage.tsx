@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
-import { PermissionGate } from "@opchub/console-ui";
-import { Card, EmptyState, Input, PageHeader, Select, Spinner } from "@opchub/console-ui";
+import { dispatch } from "@microflow4kit/api";
+import { PermissionGate } from "@microflow4kit/ui";
+import { Card, EmptyState, Input, PageHeader, Select, Spinner } from "@microflow4kit/ui";
 
 interface AuditRow {
   id?: string;

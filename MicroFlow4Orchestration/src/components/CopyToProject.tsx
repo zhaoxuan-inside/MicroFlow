@@ -5,9 +5,9 @@
  */
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
-import { useScope } from "@opchub/console-ui";
-import { Button, Input } from "@opchub/console-ui";
+import { dispatch } from "@microflow4kit/api";
+import { useScope } from "@microflow4kit/ui";
+import { Button, Input } from "@microflow4kit/ui";
 
 export function CopyToProject({
   assetKind,

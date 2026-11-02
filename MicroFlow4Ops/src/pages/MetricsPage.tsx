@@ -2,11 +2,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Card, CardContent, CardHeader, CardTitle, EmptyState, Field, PageHeader,
   PermissionGate, Select, Spinner,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 interface ScenarioMetric {
   scenario_code: string;

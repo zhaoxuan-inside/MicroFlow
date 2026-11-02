@@ -1,7 +1,7 @@
 /** 运行记录（SigNoz/jaeger 模式）：过滤清单 → 详情节点瀑布（真实 durationMs）。 */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { dispatch } from "@opchub/console-api";
+import { dispatch } from "@microflow4kit/api";
 import {
   Badge,
   Button,
@@ -16,7 +16,7 @@ import {
   PermissionGate,
   Select,
   Spinner,
-} from "@opchub/console-ui";
+} from "@microflow4kit/ui";
 
 interface RunRow {
   trace_id: string;
