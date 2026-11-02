@@ -9,3 +9,7 @@ __pycache__/
 *.pyc
 .venv/
 dist/
+
+# Node / console 支撑平台
+node_modules/
+tsconfig.tsbuildinfo
