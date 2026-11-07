@@ -367,6 +367,8 @@ void main() {
       expect(find.byType(SingleChildScrollView), findsOneWidget, reason: 'content 分区声明 scroll');
       expect(find.byType(Expanded), findsWidgets, reason: '内容区占据剩余空间');
       expect(find.byType(Stack), findsWidgets, reason: 'overlay 以 Stack 覆盖');
+      // 推进虚拟时间：让遥测队列的 autoFlush Timer 触发后结束（无 pending Timer）。
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('§7.2/§7.3：节点自约束映射渲染——fixed 固定尺寸、fill 主轴 Expanded', (tester) async {
@@ -404,6 +406,8 @@ void main() {
       expect(find.byWidgetPredicate((w) => w is SizedBox && w.height == 40), findsOneWidget,
           reason: 'fixed 约束映射为 SizedBox');
       expect(find.byType(Expanded), findsOneWidget, reason: 'fill 约束映射为主轴 Expanded');
+      // 推进虚拟时间：让遥测队列的 autoFlush Timer 触发后结束（无 pending Timer）。
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('§7.4：条件布局方案被渲染消费——断点命中覆盖 Stack 方向', (tester) async {
@@ -452,6 +456,8 @@ void main() {
       await pumpApp(tester, project, closeoutRegistry());
       expect(find.byWidgetPredicate((w) => w is Row && w.children.length == 2), findsWidgets,
           reason: '命中 desktop 方案 horizontal');
+      // 推进虚拟时间：让遥测队列的 autoFlush Timer 触发后结束（无 pending Timer）。
+      await tester.pump(const Duration(seconds: 2));
     });
 
     testWidgets('§38.1：Tier B Split/Anchor 渲染（6/6 齐备）', (tester) async {
@@ -494,6 +500,8 @@ void main() {
       expect(find.byWidgetPredicate((w) => w is Align && w.alignment == Alignment.topRight),
           findsOneWidget, reason: '锚定仅相对容器边（§7.3）');
       expect(find.text('ANCHORED'), findsOneWidget);
+      // 推进虚拟时间：让遥测队列的 autoFlush Timer 触发后结束（无 pending Timer）。
+      await tester.pump(const Duration(seconds: 2));
     });
 
     test('§12.1：Renderer Contract 挂到生产消费点且 allowed_differences 声明一致', () {

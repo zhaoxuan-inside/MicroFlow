@@ -1,3 +1,44 @@
+## 0.7.0
+
+产品级能力扩展与首个真实应用交付（两个纯 Web 应用 + 端到端运营闭环）——
+* 框架扩展（由真实产品需求驱动）：
+  - 声明式列表绑定：List 节点携带求值后的 `items`（List<Map>）时按项模板
+    渲染，模板内 `item.<field>` 表达式作用域 + 项事件分发携带项上下文
+    （键/锚点按 `#<itemKey>` 区分）；
+  - 事件载荷契约：`dispatchEvent` 支持 `payload`（`value` 键，§5）并按
+    组件契约校验载荷类型——不符进错误边界（mf.reg.contract-mismatch），
+    不静默改型；Input/Select 的 change 值经 `prop.value` 进入绑定执行；
+  - 表单元组件去桩：Input（TextFormField + onChanged 载荷回传）、Select
+    （options 来自求值 props + initialValue + change 回传）、Tabs（labels
+    声明）、Icon（闭合名称表）；builders 统一消费求值后 props；
+  - 表达式：`item.<field>` 作用域、`prev.<as>.<path>` 深路径；
+  - 采集注记 `args`：只有显式声明的参数键进入事件 payload（§24.7 定向内容）；
+  - 信封恢复 `MFEventEnvelope.fromJson`（event_id/occurred_at 保留，§30.2
+    查询消费面）；查询分组维度增加 session_id 与 payload.<key>；
+    get_data_quality 补 loss_rate（§30.2）；
+  - 恢复快照序列化 `MFRecoverySnapshot.toJson/fromJson`（§16.1 跨会话）；
+    validator 支持页面生命周期锚（`<pageId>.onEnter|onLeave`）；
+  - **遥测队列自动投递**：MFTelemetryQueue 增加 autoFlushAfter（默认 1s）
+    ——低流量场景事件不再滞留队列（真实 Web 会话验证暴露的缺陷）。
+* 应用 `apps/habit_tracker`（个人习惯打卡平台，纯 Web）：
+  模型驱动（页面/绑定/导航/列表绑定/注记），宿主只注册真实实现——
+  HabitStore 本地持久化（Web localStorage / VM 文件双实现，幂等键=习惯@日期、
+  连击按本地日历计算）、打卡走 Business Fact 通道（去重身份幂等确认 +
+  record_id 运行引用 + unknown 可查询）、§16.1 跨会话恢复（启动恢复 +
+  随渲染代持久化）、MFStorageSink 遥测落盘（同源共享通道）。
+* 应用 `apps/habit_admin`（运营管理平台，纯 Web）：
+  读同源打卡平台遥测日志 → §30.2 查询引擎封装为运营适配器——概览指标
+  （事件/打卡/会话/丢失率口径）、事件明细（query_events）、追踪查询
+  （get_trace）、数据质量（get_data_quality）；自身事件独立落盘；
+  损坏行计入丢弃口径，空数据如实空态（无假数据）。
+* 测试：test/framework_ext_test.dart（6 用例）+ 应用级测试（tracker 6 +
+  admin 3，跑真实存储实现）；全仓 73 用例。
+* 浏览器端到端验证（真实 Chrome 会话）：创建习惯 → 打卡（幂等确认）
+  → 遥测落盘 → 管理平台概览/明细呈现真实事件与分组计数 → 恢复快照还原
+  页面状态（"连续 1 天/已打卡"）。
+* `tool/serve_apps.py`：同源托管两端（/ 与 /admin/），localStorage 共享
+  是管理平台读取打卡平台运营数据的前提。
+
 ## 0.6.0
 
 M2 收尾清零（遗留项完整修复）——

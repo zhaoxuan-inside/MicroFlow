@@ -380,7 +380,9 @@ class MFValidator {
   void _validateBindings(List<MFDiag> diags) {
     final nodes = <String, MFNode>{};
     final ownerPage = <String, String>{};
+    final lifecyclePages = <String, String>{};
     for (final p in project.pages) {
+      lifecyclePages[p.id] = p.id;
       for (final n in p.tree.flatten()) {
         nodes[n.id] = n;
         ownerPage[n.id] = p.id;
@@ -402,7 +404,15 @@ class MFValidator {
         final event = anchor.last;
         final node = nodes[nodeId];
         if (node == null) {
-          diags.add(MFDiag(MFCodes.bindingEventUnknown, '绑定 ${binding.id} 的目标节点 $nodeId 不存在'));
+          // 页面生命周期锚（§8：`<pageId>.onEnter|onLeave`）是虚拟锚，
+          // 运行时经 findBinding 直接执行；目标必须确为已注册页面。
+          if (lifecyclePages.containsKey(nodeId)) {
+            if (event != 'onEnter' && event != 'onLeave') {
+              diags.add(MFDiag(MFCodes.bindingEventUnknown, '页面锚 $nodeId 只支持 onEnter/onLeave 事件（binding=${binding.id}）'));
+            }
+          } else {
+            diags.add(MFDiag(MFCodes.bindingEventUnknown, '绑定 ${binding.id} 的目标节点 $nodeId 不存在'));
+          }
           continue;
         }
         final contract = _contractOf(node.type);
@@ -413,6 +423,7 @@ class MFValidator {
           diags.add(MFDiag(MFCodes.bindingNoConcurrency, '绑定 ${binding.id} 未声明并发策略，将拒绝重复触发（基线 26）'));
         }
         final pageId = ownerPage[nodeId] ??
+            lifecyclePages[nodeId] ??
             project.manifest.entryPage ??
             (project.pages.isEmpty ? null : project.pages.first.id);
         final page = pageId == null ? null : project.page(pageId);

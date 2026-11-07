@@ -197,6 +197,7 @@ class MFLocalQueryEngine {
   Map<String, Object?> getDataQuality({String scope = 'all'}) => {
         'scope': scope,
         'schema_version': schemaVersion,
+        'loss_rate': _lossRate,
         ...?dataQuality?.call(),
       };
 }

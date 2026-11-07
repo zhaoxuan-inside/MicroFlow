@@ -216,11 +216,23 @@ class MFInMemorySink implements MFTelemetrySink {
 /// is the only emitter; this class owns envelope building / Schema validation.
 /// Failure to ingest never blocks core user flows.
 class MFTelemetryQueue implements MFEmissionSink {
-  MFTelemetryQueue({required this.sink, this.batchMax = 32, this.capacity = 500});
+  MFTelemetryQueue({
+    required this.sink,
+    this.batchMax = 32,
+    this.capacity = 500,
+    this.autoFlushAfter = const Duration(seconds: 1),
+  });
 
   final MFTelemetrySink sink;
   final int batchMax;
   final int capacity;
+
+  /// 批量延迟上限（§30.1 批量与队列延迟口径）：队列非空时按此间隔自动
+  /// 投递，事件不必攒满 [batchMax] 才离开客户端——低流量场景（如单页
+  /// 操作几次就关闭）同样能可靠到达接收端。
+  final Duration autoFlushAfter;
+
+  Timer? _autoFlush;
 
   final List<MFEventEnvelope> _buffer = [];
   int dropped = 0;
@@ -262,10 +274,20 @@ class MFTelemetryQueue implements MFEmissionSink {
     _buffer.add(event);
     if (_buffer.length >= batchMax) {
       unawaited(_flush());
+      return;
     }
+    _autoFlush ??= Timer(autoFlushAfter, () {
+      _autoFlush = null;
+      if (_buffer.isNotEmpty) {
+        unawaited(_flush());
+      }
+    });
   }
 
   Future<void> _flush() async {
+    if (_buffer.isEmpty) return;
+    _autoFlush?.cancel();
+    _autoFlush = null;
     final batch = List.of(_buffer);
     _buffer.clear();
     try {
