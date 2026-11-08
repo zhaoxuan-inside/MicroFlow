@@ -167,7 +167,7 @@ void main() {
   });
 
   group('基线 22 —— 样式系统', () {
-    test('基线 22（部分）：样式片值只解析到 token，字面量静态拒绝（§36.4；§36.5 动效面未覆盖）', () {
+    test('基线 22（静态面）：样式片值只解析到 token，字面量静态拒绝（§36.4）', () {
       final diags = validateStyleSheets([
         const MFStyleSheet(id: 'style-ok', base: {'foreground': 'color.text.primary'}),
         const MFStyleSheet(id: 'style-bad', base: {'foreground': 'FF0000'}),

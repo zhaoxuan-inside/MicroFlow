@@ -49,6 +49,12 @@ abstract final class MFCodes {
   static const styleFaceUndeclared = 'mf.style.face-undeclared';
   static const themeIncomplete = 'mf.theme.incomplete';
 
+  // Motion (§36.5 动效面、§36.7 减少动效替代组)。
+  static const motionSurfaceUndeclared = 'mf.motion.surface-undeclared';
+  static const motionTokenInvalid = 'mf.motion.token-invalid';
+  static const motionAlternativeDangling = 'mf.motion.alternative-dangling';
+  static const motionAlternativeApplied = 'mf.motion.alternative-applied';
+
   // Reference / binding (§4.3, §39).
   static const refDangling = 'mf.ref.dangling';
   static const bindingEventUnknown = 'mf.binding.event-unknown';
@@ -148,6 +154,10 @@ Map<String, MFDiag> _buildRegistry() {
     const MFDiag(MFCodes.styleVariantAmbiguous, '样式片同选择器多 set 且顺序未声明'),
     const MFDiag(MFCodes.styleFaceUndeclared, '节点引用了未声明的样式面'),
     const MFDiag(MFCodes.themeIncomplete, '主题对被引用 token 解析不完整（§36.3）'),
+    const MFDiag(MFCodes.motionSurfaceUndeclared, '动效请求落在未声明的动效面（§36.5）'),
+    const MFDiag(MFCodes.motionTokenInvalid, 'motion token 值形状不符（§36.5）'),
+    const MFDiag(MFCodes.motionAlternativeDangling, '减少动效替代组缺少同名基础 token（§36.7）'),
+    const MFDiag(MFCodes.motionAlternativeApplied, '减少动效偏好命中替代组并应用替代 Token（§36.7）'),
     const MFDiag(MFCodes.teleManualStandardEvent, '业务代码手工上报标准事件族'),
     const MFDiag(MFCodes.teleQueueOverflow, '采集队列满载丢弃'),
     const MFDiag(MFCodes.teleSchemaInvalid, '事件信封 Schema 校验失败（§24.2）'),

@@ -61,13 +61,19 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
   外部运行引用记录（§24.8，基线 11）、Ingest 参考实现与 Query/Export 本地
   参考协议（§30）；接收端服务、实验平台、远程诊断仍由业务层/承载方实现
   （§27）。
+- **动效面（§36.5/§36.7，0.9.0）**：motion Token（`{"duration", "curve"[4]}`）
+  解析到 `MFMotionSpec`；组件契约 `motionSurfaces` 声明动效面——渲染侧只对
+  已声明面施加动效，未声明面拒绝并记录（mf.motion.surface-undeclared）；
+  减少动效偏好命中 `<token>.reduced` 替代组时应用替代 Token 并记录（基线 23）；
+  悬空替代组/形状不符是静态错误；入场动效 `mfMotionEntrance` 与悬停参数
+  `MFMotionLerp.hover` 为宿主原语消费面（渲染上下文携带契约声明面与解析器）。
 - **阶段六最小闭环（§14/§19）**：结构化命令 `create_page`、
   `create_page_from_template`、`connect_navigation`、`register_finding`、
   `validate_project`、`inspect_impact`；候选项目过同一静态校验门禁，
   失败不改模型；修改审计（前后摘要/影响对象/主体）与可回滚修订；
   页面模板参数化实例化；findings 回流登记（§43.3）。
 
-尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、§36.5 动效面、
+尚未实现（对照设计章节）：编译模式产物（§13.3 编译侧）、
 发布快照构建器与性能预算门禁（§16/§22.2）、增量构建（§22.2）。
 
 ## 一致性基线覆盖（机器可读）

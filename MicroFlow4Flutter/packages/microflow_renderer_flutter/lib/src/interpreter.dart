@@ -55,6 +55,7 @@ class MFInterpreter {
         instance: instance,
         providedScopes: [],
         layoutPlans: _resolveLayoutPlans(page, conditions),
+        conditions: conditions,
       ).build();
     }
     return _renderExplicitLayers(page, instance, conditions);
@@ -81,6 +82,7 @@ class MFInterpreter {
           instance: instance,
           providedScopes: [],
           layoutPlans: plans,
+          conditions: conditions,
         ).widgetFor(n);
     Widget? header;
     Widget? footer;
@@ -139,6 +141,7 @@ class _NodeRenderer {
     required this.instance,
     required this.providedScopes,
     this.layoutPlans = const {},
+    this.conditions = const {},
     this.item,
     this.itemIndex,
   });
@@ -149,6 +152,9 @@ class _NodeRenderer {
 
   /// 已解析的条件布局计划（§7.4）：node id -> 命中的声明方案。
   final Map<String, MFLayoutPlan> layoutPlans;
+
+  /// 页面级条件上下文（§7.4/§36.4 选择器面）：动效偏好 `motion: reduced` 等经此到达渲染。
+  final Map<String, String?> conditions;
 
   /// 声明式列表绑定的当前项（§39 事件上下文）：模板子树内 `item.<field>`
   /// 表达式与事件分发携带的项上下文。
@@ -237,6 +243,10 @@ class _NodeRenderer {
       }
     }
 
+    // 动效面上下文（§36.5）：组件契约声明的动效面 + motion token 解析
+    // （冻结主题 + 减少动效条件 `conditions['motion'] == 'reduced'`，§36.7）。
+    final nodeContract = interpreter.runtime.registry.entry(node.type)?.contract ??
+        interpreter.runtime.project.components[node.type]?.contract;
     final context = MFRenderContext(
       props: {
         ...evaluated,
@@ -244,6 +254,13 @@ class _NodeRenderer {
         // translations are diagnosable (§42.5), never silent.
         if (node.t != null) 'text': interpreter.localize(node.t!, instance.frozen.locale),
       },
+      motionSurfaces: nodeContract?.motionSurfaces ?? const {},
+      resolveMotion: (token) => interpreter.styleResolver.resolveMotion(
+            token,
+            themeId: instance.frozen.theme,
+            reduceMotion: conditions['motion'] == 'reduced',
+          ),
+      recordMotionDiag: (diag) => interpreter.runtime.diagSink.add(diag),
       onEvent: (nodeId, event, [payload]) {
         // Dispatch through the runtime binding map (§39); evaluation order
         // is declaration order and deterministic. Payload (typed event value)
@@ -325,6 +342,7 @@ class _NodeRenderer {
         instance: instance,
         providedScopes: providedScopes,
         layoutPlans: layoutPlans,
+        conditions: conditions,
         item: itemMap,
         itemIndex: i,
       );

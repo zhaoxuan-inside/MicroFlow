@@ -1,3 +1,26 @@
+## 0.9.0
+
+动效面（§36.5/§36.7）落地——由宿主产品「按前端开发框架补齐缺口」驱动：
+* **动效值只解析到 motion Token（基线 22 全覆盖）**：motion token 形状
+  `{"duration": ms, "curve": [x1,y1,x2,y2]}` → `MFMotionSpec.tryParse`；
+  `MFStyleResolver.resolveMotion` 按冻结主题解析；形状不符是静态错误
+  （mf.motion.token-invalid，runtime validator 挂 `validateMotionTokens`）
+  （model 0.7.0 / runtime 0.7.0）。
+* **动效面声明与强制（§36.5）**：`ComponentContract.motionSurfaces` 声明面；
+  解释器把契约声明面 + 解析器 + 诊断通道注入渲染上下文；未声明面的动效请求
+  拒绝并记录（mf.motion.surface-undeclared），渲染侧新增 `mfMotionEntrance`
+  （淡入+上移入场）与 `MFMotionLerp.hover`（悬停液态参数，duration/curve
+  token 驱动）两个宿主消费面（renderer 0.7.0）。
+* **减少动效替代组（§36.7，基线 23 全覆盖）**：`<token>.reduced` 命名约定
+  承载替代 spec；`reduceMotion` 命中时应用替代 Token 并经渲染通道记录
+  （mf.motion.alternative-applied）；悬空替代组是静态错误
+  （mf.motion.alternative-dangling）。
+* 诊断码单一来源登记四个 mf.motion.*；baselines 22 部分覆盖→已覆盖、
+  23 未覆盖→已覆盖（覆盖率表重生成，23/32 已覆盖）。
+* 测试：test/framework_v090_motion_test.dart（6 用例：解析/形状校验/未声明面
+  拒绝/替代组命中+记录/悬空替代组/替代直出）；全仓 86 用例（80 伞包 +
+  6 应用级）全绿 + analyze 0 issues。
+
 ## 0.8.0
 
 宿主产品（OpcHub frontend_flutter）重构收口驱动的框架能力扩展——

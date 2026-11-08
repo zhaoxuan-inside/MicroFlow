@@ -3,4 +3,5 @@ library;
 export 'src/interpreter.dart';
 export 'src/microflow_app.dart';
 export 'src/primitives.dart';
+export 'src/motion_surface.dart';
 export 'src/renderer_contract.dart';

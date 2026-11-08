@@ -5,6 +5,7 @@ export 'src/events.dart';
 export 'src/layout.dart';
 export 'src/recovery.dart';
 export 'src/styles.dart';
+export 'src/motion.dart';
 export 'src/diagnostics.dart';
 export 'src/tree.dart';
 export 'src/project.dart';

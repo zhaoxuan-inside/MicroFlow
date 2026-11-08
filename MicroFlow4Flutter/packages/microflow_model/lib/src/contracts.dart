@@ -99,6 +99,7 @@ class ComponentContract {
     this.states = const [],
     this.layout = const LayoutCapability(),
     this.exposedStyles = const [],
+    this.motionSurfaces = const {},
     this.accessibilityRole,
     this.requiresLabel = false,
     this.info = const InfoContract(),
@@ -118,6 +119,10 @@ class ComponentContract {
   final List<String> states;
   final LayoutCapability layout;
   final List<String> exposedStyles;
+
+  /// 已声明动效面（§36.5）：渲染侧只允许对这里声明的面施加动效——
+  /// 未声明面的动效请求被记录（mf.motion.surface-undeclared）且不生效。
+  final Set<String> motionSurfaces;
   final String? accessibilityRole;
   final bool requiresLabel;
   final InfoContract info;

@@ -32,7 +32,14 @@ CrossAxisAlignment crossAlignOf(String? align) => switch (align) {
 /// and an event callback routed through the runtime's binding map (never
 /// directly through business code, §24.7).
 class MFRenderContext {
-  const MFRenderContext({required this.props, required this.onEvent, required this.tokenColor});
+  const MFRenderContext({
+    required this.props,
+    required this.onEvent,
+    required this.tokenColor,
+    this.motionSurfaces = const {},
+    this.resolveMotion,
+    this.recordMotionDiag,
+  });
 
   final Map<String, Object?> props;
 
@@ -43,6 +50,15 @@ class MFRenderContext {
 
   /// Resolve a named color token into a Flutter color.
   final Color Function(String tokenName) tokenColor;
+
+  /// 该节点组件契约已声明的动效面（§36.5）；渲染侧动效只允许出现在这里。
+  final Set<String> motionSurfaces;
+
+  /// motion token 解析（§36.5 值只解析到 motion Token；§36.7 减少动效替代组）。
+  final MFMotionResolution? Function(String tokenName)? resolveMotion;
+
+  /// 动效诊断记录通道（替代组命中记录 / 未声明面拒绝记录）。
+  final void Function(MFDiag diag)? recordMotionDiag;
 }
 
 class MFNodeView {

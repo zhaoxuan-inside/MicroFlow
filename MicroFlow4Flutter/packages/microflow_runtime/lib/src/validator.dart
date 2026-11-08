@@ -47,6 +47,7 @@ class MFValidator {
   /// 样式静态检查（§36.4/§36.8）：字面量禁令、承接链、主题完整性。
   void _validateStyles(List<MFDiag> diags) {
     diags.addAll(validateStyleSheets(project.styleSheets.values));
+    diags.addAll(validateMotionTokens(project.tokens.values));
     final referencedTokens = <String>{
       for (final sheet in project.styleSheets.values) ...sheet.base.values,
       for (final sheet in project.styleSheets.values)
