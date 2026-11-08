@@ -1,3 +1,39 @@
+## 0.8.0
+
+宿主产品（OpcHub frontend_flutter）重构收口驱动的框架能力扩展——
+* **主题 ref 链深解析（§36.3）**：`MFStyleResolver.effectiveTokens` 对合并
+  结果整体做有界深度（8）防环的 `{"ref": token}` 链式解析——基础 token 集
+  内的语义 ref 与多跳 override 重定向一律解到底；环/超深/悬空 ref 归 null
+  （与 `MFTokenSet.resolve` 口径对齐，缺报由 completeness 诊断承载）。
+  宿主侧此前自带的"解到底"补丁不再需要（model 0.6.0）。
+* **列表/映射字面量内嵌 ref 深求值（§37.2 边界撤销）**：`MFExpr.parse` 对
+  List/Map 字面量递归解析，新增 `MFStruct` 复合表达式节点——内嵌表达式形状
+  （ref/call/比较/逻辑）求值后重建结构，普通内容保持字面量骨架；
+  `refPaths()` 递归（静态存在性检查覆盖深结构）；props 内联可执行逻辑仍被
+  §2.9 静态拒绝（runtime 0.6.0）。宿主侧"整图注入 + 宿主侧字段抽取"的
+  workaround 口径可改直绑。
+* **List 虚拟化（§39）**：超过阈值（30 项）的声明式列表走
+  `ListView.builder` 懒构建——shrinkWrap + 禁内部滚动适配外层滚动容器，
+  item scope 与 `#<itemKey>` 锚点键语义不变（renderer 0.6.0）。
+* **Table 数据绑定**：`columns: [{key,label,width?}]` + `rows: [Map]` 模式
+  渲染表头/单元格（列宽可声明）；`columns` 为数量 + children 分块的旧模式
+  向后兼容（renderer 0.6.0）。
+* **布局间距与条件呈现**：Stack/Split/Grid 支持 `gap` 数值 prop（Stack/Split
+  默认 0 保持既有行为，Grid 默认 8）；解释器支持节点 `visible` 条件渲染——
+  求值为 false 时连同插槽整体跳过，bool 字面量与结构化谓词均可承载
+  （renderer 0.6.0）。
+* 工程卫生：子包/样例 `analysis_options.yaml` 的仓库搬迁遗留绝对路径改为
+  相对 include；CI 矩阵与 README 检查指引中不存在的 `example/` 引用更正为
+  `apps/`。
+* **显式图层非滚动内容区布局修复（renderer 0.8.0 附带）**：content 分区
+  未声明滚动时内容列改为填满式（max + stretch）——原 min 收缩列把无界/
+  收缩语义传给声明 fill 的顶层子节点（"non-zero flex but unbounded" 崩溃）；
+  滚动区保持 shrink-wrap。
+* 测试：test/framework_v080_test.dart（10 用例：主题链解析/环检测、嵌套
+  求值/字面量往返、refPaths 递归、虚拟化懒构建、数据表双模式、gap、
+  visible 谓词）；全仓 analyze 0 issues + 全部用例通过（既有 73 用例
+  零回归）。
+
 ## 0.7.0
 
 产品级能力扩展与首个真实应用交付（两个纯 Web 应用 + 端到端运营闭环）——

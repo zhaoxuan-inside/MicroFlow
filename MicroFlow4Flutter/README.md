@@ -243,7 +243,7 @@ session.undo();                           // 回滚最近一次修订，审计�
 
 ## 检查
 
-每个模块独立执行（总包与 example 同理）：
+每个模块独立执行（总包与 apps 示例同理）：
 
 ```text
 cd packages/microflow_model && flutter analyze      # 0 issues
@@ -254,5 +254,5 @@ cd packages/microflow_model && flutter analyze      # 0 issues
 ```text
 flutter analyze   # 0 issues
 flutter test      # 一致性基线测试（§44.3 可单测条目）
-cd example && flutter run -d chrome
+cd apps/habit_tracker && flutter run -d chrome   # 与 admin 同由 tool/serve_apps.py 同源起服
 ```

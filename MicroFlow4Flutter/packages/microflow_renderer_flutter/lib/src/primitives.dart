@@ -137,6 +137,8 @@ class MFPrimitiveTable {
         ),
     'Stack': (ctx, view) {
       final direction = axisOf(ctx.props['direction'] as String?);
+      // 0.8.0：gap 数值 prop 声明主轴间距（默认 0 保持既有无间距行为）。
+      final gap = (ctx.props['gap'] as num?)?.toDouble() ?? 0;
       // 子约束映射（§7.2/§7.3）：fill 主轴 -> Expanded 分配剩余空间，
       // fixed -> SizedBox 固定尺寸，hug/未声明 -> 按内容。
       Widget wrap(int i, Widget child) {
@@ -156,6 +158,7 @@ class MFPrimitiveTable {
       final children = [for (var i = 0; i < view.children.length; i++) wrap(i, view.children[i])];
       if (direction == Axis.horizontal) {
         return Row(
+          spacing: gap,
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: mainAlignOf(ctx.props['align'] as String?),
           crossAxisAlignment: crossAlignOf(ctx.props['crossAlign'] as String?),
@@ -163,6 +166,7 @@ class MFPrimitiveTable {
         );
       }
       return Column(
+        spacing: gap,
         mainAxisSize: ctx.props['expand'] == true ? MainAxisSize.max : MainAxisSize.min,
         mainAxisAlignment: mainAlignOf(ctx.props['align'] as String?),
         crossAxisAlignment: crossAlignOf(ctx.props['crossAlign'] as String?),
@@ -194,7 +198,47 @@ class MFPrimitiveTable {
       );
     },
     'Table': (ctx, view) {
-      final columns = (ctx.props['columns'] as num?)?.toInt() ?? 1;
+      final colSpec = ctx.props['columns'];
+      final rowSpec = ctx.props['rows'];
+      // 0.8.0 数据绑定模式：columns: [{key,label,width?}] + rows: [Map]。
+      if (colSpec is List && rowSpec is List) {
+        final widths = <int, TableColumnWidth>{
+          for (var i = 0; i < colSpec.length; i++)
+            if (colSpec[i] is Map && (colSpec[i] as Map)['width'] is num)
+              i: FixedColumnWidth(((colSpec[i] as Map)['width'] as num).toDouble()),
+        };
+        String labelOf(Object c) => c is Map ? '${c['label'] ?? c['key']}' : '$c';
+        Object? cellValue(Map row, Object c) => row[c is Map ? '${c['key']}' : '$c'];
+        Widget cell(Object? v) => Padding(
+              padding: const EdgeInsets.all(6),
+              child: Text('$v', maxLines: 2, overflow: TextOverflow.ellipsis),
+            );
+        return Table(
+          columnWidths: widths.isEmpty ? null : widths,
+          defaultColumnWidth: const FlexColumnWidth(),
+          border: TableBorder.all(color: ctx.tokenColor('color.border')),
+          children: [
+            TableRow(
+              children: [
+                for (final c in colSpec)
+                  TableCell(
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Text(labelOf(c), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+              ],
+            ),
+            for (final r in rowSpec)
+              if (r is Map)
+                TableRow(children: [for (final c in colSpec) TableCell(child: cell(cellValue(r, c)))])
+              else
+                TableRow(children: [for (final _ in colSpec) TableCell(child: cell(r))]),
+          ],
+        );
+      }
+      // 旧模式（向后兼容）：columns 为数量，children 按列数分块。
+      final columns = (colSpec as num?)?.toInt() ?? 1;
       final rows = [for (int i = 0; i < view.children.length; i += columns) view.children.sublist(i, (i + columns).clamp(0, view.children.length))];
       return Table(
         defaultColumnWidth: const FlexColumnWidth(),
@@ -207,14 +251,17 @@ class MFPrimitiveTable {
     },
     'Split': (ctx, view) {
       // 分栏（Tier B，允许替换实现）：direction + weights 声明式分配，
-      // 未声明权重的子项均分剩余空间。
+      // 未声明权重的子项均分剩余空间；0.8.0 支持 gap 主轴间距。
       final horizontal = (ctx.props['direction'] as String? ?? 'horizontal') != 'vertical';
+      final gap = (ctx.props['gap'] as num?)?.toDouble() ?? 0;
       final weights = (ctx.props['weights'] as List?)?.cast<num>();
       final children = [
         for (var i = 0; i < view.children.length; i++)
           Expanded(flex: (weights?.length ?? 0) > i ? weights![i].toInt() : 1, child: view.children[i]),
       ];
-      return horizontal ? Row(children: children) : Column(children: children);
+      return horizontal
+          ? Row(spacing: gap, children: children)
+          : Column(spacing: gap, children: children);
     },
     'Anchor': (ctx, view) {
       // 锚定（§7.3 Overlay 规则：仅相对容器边）：anchor 声明映射到
@@ -236,9 +283,11 @@ class MFPrimitiveTable {
     },
     'Grid': (ctx, view) {
       final columns = (ctx.props['columns'] as num?)?.toInt() ?? 2;
+      // 0.8.0：gap 可声明（默认 8 保持既有行为）。
+      final gap = (ctx.props['gap'] as num?)?.toDouble() ?? 8;
       return Wrap(
-        runSpacing: 8,
-        spacing: 8,
+        runSpacing: gap,
+        spacing: gap,
         children: [for (final child in view.children) FractionallySizedBox(widthFactor: 1 / columns, child: child)],
       );
     },

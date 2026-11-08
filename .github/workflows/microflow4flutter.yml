@@ -32,7 +32,8 @@ jobs:
           - MicroFlow4Flutter/packages/microflow_observability
           - MicroFlow4Flutter/packages/microflow_renderer_flutter
           - MicroFlow4Flutter/packages/microflow_authoring
-          - MicroFlow4Flutter/example
+          - MicroFlow4Flutter/apps/habit_tracker
+          - MicroFlow4Flutter/apps/habit_admin
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2

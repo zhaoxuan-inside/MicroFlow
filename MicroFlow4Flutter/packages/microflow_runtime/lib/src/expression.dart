@@ -73,6 +73,13 @@ class MFExprEvaluator {
             'not' => !(eval(operands.first, ctx) == true),
             _ => false,
           },
+        // 0.8.0（§37.2 深求值）：字面量骨架内的表达式叶逐个求值后重建结构。
+        MFStruct(:final items, :final map) => items != null
+            ? [for (final e in items) eval(e, ctx)]
+            : {
+                for (final e in (map ?? const <String, MFExpr>{}).entries)
+                  e.key: eval(e.value, ctx),
+              },
       };
 
   double _num(List<MFExpr> operands, int i, EvalContext ctx) =>

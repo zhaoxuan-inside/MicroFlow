@@ -6,7 +6,9 @@ library;
 /// Structured expression atoms (§37.2 subset).
 ///
 /// Grammar (structured JSON form):
-/// - literal: any JSON scalar/list/map without "ref"/"call"/"op" keys;
+/// - literal: any JSON scalar; lists/maps are parsed recursively (0.8.0) —
+///   expression-shaped nodes embedded inside evaluate, ordinary content
+///   stays literal scaffolding ([MFStruct]);
 /// - reference: `{"ref": "scope.path"}` with scopes
 ///   prop|param|state|session|product|local|capability|provided|prev;
 /// - comparison: `{"gt"|"gte"|"lt"|"lte"|"eq"|"neq": [a, b]}`;
@@ -37,6 +39,13 @@ sealed class MFExpr {
         {'or': final List args} => MFLogic('or', args.map(MFExpr.parse).toList()),
         {'not': final inner} => MFLogic('not', [MFExpr.parse(inner)]),
         null => const MFLiteral(null),
+        // 0.8.0（§37.2 深求值）：列表/映射字面量递归解析——内嵌表达式形状的
+        // 节点参与求值，其余内容保持字面量骨架；原先「内嵌 ref 不参与求值」
+        // 的边界由 [MFStruct] 撤销。
+        final List list => MFStruct.list([for (final v in list) MFExpr.parse(v)]),
+        final Map map => MFStruct.map({
+            for (final e in map.entries) '${e.key}': MFExpr.parse(e.value),
+          }),
         _ => MFLiteral(json),
       };
 
@@ -100,6 +109,26 @@ class MFLogic extends MFExpr {
   Iterable<String> refPaths() sync* {
     for (final o in operands) {
       yield* o.refPaths();
+    }
+  }
+}
+
+/// 0.8.0（§37.2 深求值）：列表/映射字面量的递归解析产物——骨架保持字面量，
+/// 内嵌的表达式形状节点（ref/call/比较/逻辑）在求值时重建结构并求值。
+class MFStruct extends MFExpr {
+  const MFStruct.list(this.items) : map = null;
+  const MFStruct.map(this.map) : items = null;
+
+  final List<MFExpr>? items;
+  final Map<String, MFExpr>? map;
+
+  @override
+  Iterable<String> refPaths() sync* {
+    for (final e in items ?? const <MFExpr>[]) {
+      yield* e.refPaths();
+    }
+    for (final v in (map ?? const <String, MFExpr>{}).values) {
+      yield* v.refPaths();
     }
   }
 }

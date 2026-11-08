@@ -89,12 +89,20 @@ class MFStyleResolver {
   /// Effective token map for a theme (walk extends chain, apply overrides
   /// only for existing tokens). Bounded depth cuts cycles (static checker
   /// also reports them).
+  ///
+  /// 0.8.0：合并结果整体做 ref 链深解析（[_resolveTokenRefs]）——基础 token
+  /// 集内的语义 ref（如 `color.bg.canvas -> {"ref": "color.bg.canvas.light"}`）
+  /// 与多跳 override 重定向一律解到底；宿主不再需要自行补解析。
   Map<String, Object?> effectiveTokens(String themeId, {Set<String> visiting = const {}}) {
     if (visiting.contains(themeId)) return const {}; // cycle cut
     final theme = themes[themeId];
-    if (theme == null) return rawTokens(tokenSets[themeId]);
     final effective = <String, Object?>{};
     final next = {...visiting, themeId};
+    if (theme == null) {
+      // Unknown theme id: raw token-set projection (still ref-resolved below).
+      effective.addAll(rawTokens(tokenSets[themeId]));
+      return _resolveTokenRefs(effective);
+    }
     if (theme.base != null) {
       effective.addAll(rawTokens(tokenSets[theme.base!]));
     }
@@ -106,7 +114,8 @@ class MFStyleResolver {
     for (final e in theme.overrides.entries) {
       if (effective.containsKey(e.key)) {
         final v = e.value;
-        // Themes redirect (§36.3): only `{"ref": other-token}` allowed.
+        // Themes redirect (§36.3): only `{"ref": other-token}` allowed;
+        // multi-hop chains are resolved by the deep pass below.
         if (v is Map && v['ref'] is String) {
           effective[e.key] = effective[v['ref'] as String];
         } else {
@@ -114,7 +123,36 @@ class MFStyleResolver {
         }
       }
     }
-    return effective;
+    return _resolveTokenRefs(effective);
+  }
+
+  /// 0.8.0 ref 链深解析（§36.3 口径对齐 [MFTokenSet.resolve]）：值形如
+  /// `{"ref": <token>}` 的条目沿 effective map 链式解到底；深度上限 8，
+  /// 成环或超深返回 null（由 completeness 诊断负责报缺），ref 目标缺失时
+  /// 同样归 null。非重定向值原样保留。
+  static const int _maxRefDepth = 8;
+
+  Map<String, Object?> _resolveTokenRefs(Map<String, Object?> tokens) {
+    Object? ground(String token, Set<String> visiting, int depth) {
+      if (depth > _maxRefDepth) return null; // cycle / over-depth -> unresolved
+      if (!visiting.add(token)) return null; // cycle cut
+      final v = tokens[token];
+      if (v is Map && v.containsKey('ref') && v['ref'] is String) {
+        return ground(v['ref'] as String, visiting, depth + 1);
+      }
+      return v;
+    }
+
+    final resolved = <String, Object?>{};
+    for (final e in tokens.entries) {
+      final v = e.value;
+      if (v is Map && v.containsKey('ref') && v['ref'] is String) {
+        resolved[e.key] = ground(v['ref'] as String, <String>{}, 0);
+      } else {
+        resolved[e.key] = v;
+      }
+    }
+    return resolved;
   }
 
   Map<String, Object?> rawTokens(MFTokenSet? set) => set?.tokens ?? const {};

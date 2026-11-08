@@ -112,9 +112,13 @@ class MFInterpreter {
       }
     }
     final contentScroll = regions.any((r) => r.region == 'content' && r.scroll);
+    // 0.8.0：非滚动内容区改为填满式 Column（max + stretch）——Expanded 包裹的
+    // 上层给出有界紧约束，内容区原样下传（min 收缩会把无界/收缩语义传给
+    // 声明 fill 的子节点，导致 "non-zero flex but unbounded" 崩溃）；滚动区
+    // 保持 shrink-wrap 列。
     final contentArea = contentScroll
         ? SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: content))
-        : Column(mainAxisSize: MainAxisSize.min, children: content);
+        : Column(mainAxisSize: MainAxisSize.max, crossAxisAlignment: CrossAxisAlignment.stretch, children: content);
     Widget body = Column(children: [
       ?header,
       Expanded(child: contentArea),
@@ -181,6 +185,15 @@ class _NodeRenderer {
     for (final e in node.props.entries) {
       final expr = MFExpr.parse(e.value);
       evaluated[e.key] = interpreter.runtime.safeEval(expr, _ctx());
+    }
+
+    // 0.8.0（§7.3 条件呈现）：节点声明 `visible` 且求值为 false 时连同插槽
+    // 整体跳过；bool 字面量与结构化谓词（eq/neq/and/…）均可承载。
+    if (evaluated['visible'] == false) {
+      return KeyedSubtree(
+        key: ValueKey('${instance.id}/${node.id}$keySuffix'),
+        child: const SizedBox.shrink(),
+      );
     }
 
     // 声明式列表绑定：List 节点携带求值后的 `items`（List<Map>）时，
@@ -288,36 +301,54 @@ class _NodeRenderer {
 
   /// 项模板渲染：每个 Map 项渲染一份 children 模板；非 Map 项上报运行诊断
   /// 后跳过（列表绑定的项是结构化数据，§39）。
+  ///
+  /// 0.8.0 虚拟化（§39）：超过阈值（30 项）的列表走 `ListView.builder`
+  /// 懒构建——shrinkWrap + 禁内部滚动以适配外层滚动容器，item scope 与
+  /// `#<itemKey>` 锚点键语义不变。
+  static const int _virtualizeThreshold = 30;
+
   Widget _renderItemTemplates(MFNode node, List<Object?> items) {
-    final rows = <Widget>[];
-    for (var i = 0; i < items.length; i++) {
+    Widget row(int i) {
       final raw = items[i];
-      if (raw is Map) {
-        final itemMap = raw.cast<String, Object?>();
-        final scoped = _NodeRenderer(
-          interpreter: interpreter,
-          instance: instance,
-          providedScopes: providedScopes,
-          layoutPlans: layoutPlans,
-          item: itemMap,
-          itemIndex: i,
-        );
-        rows.add(Column(
-          key: ValueKey('${instance.id}/${node.id}#${itemMap['id'] ?? i}'),
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [for (final template in node.children) scoped.widgetFor(template)],
-        ));
-      } else {
+      if (raw is! Map) {
         interpreter.runtime.diagSink.add(MFDiag(
           MFCodes.interactionUnknownMember,
           '列表绑定第 $i 项不是结构化对象，已跳过（node=${node.id}）',
           stage: Stage.runtime,
           severity: Severity.warning,
         ));
+        return const SizedBox.shrink();
       }
+      final itemMap = raw.cast<String, Object?>();
+      final scoped = _NodeRenderer(
+        interpreter: interpreter,
+        instance: instance,
+        providedScopes: providedScopes,
+        layoutPlans: layoutPlans,
+        item: itemMap,
+        itemIndex: i,
+      );
+      return Column(
+        key: ValueKey('${instance.id}/${node.id}#${itemMap['id'] ?? i}'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [for (final template in node.children) scoped.widgetFor(template)],
+      );
     }
-    return Column(mainAxisSize: MainAxisSize.min, children: rows);
+
+    if (items.length > _virtualizeThreshold) {
+      return ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        itemCount: items.length,
+        itemBuilder: (context, i) => row(i),
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [for (var i = 0; i < items.length; i++) row(i)],
+    );
   }
 }
 
