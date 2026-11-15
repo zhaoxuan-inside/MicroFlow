@@ -57,6 +57,11 @@ def check_schema(schema: Mapping, path: str = "schema") -> None:
 
 def validate(value, schema: Mapping, path: str = "data") -> None:
     check_schema(schema)
+    _validate_registered(value, schema, path)
+
+
+def _validate_registered(value, schema: Mapping, path: str = "data") -> None:
+    """Validate data against a schema already checked and frozen by Registry."""
     validate_value(value)
 
     def visit(v, s, p):

@@ -1,10 +1,12 @@
 """Event-loop-owned static DAG execution over atomic state commands.
 
-No lease takeover, automatic redelivery, hard thread cancellation or durable
-artifact publication is implemented by this driver.
+After a lost worker, a takeover requeues the fenced owner's pure/read claims
+via the recover command and converges the run; hard thread cancellation and
+durable artifact publication are not implemented by this driver.
 """
 import asyncio
 from collections import deque
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 import inspect
@@ -12,11 +14,13 @@ import math
 import threading
 import uuid
 
+from .coordinator import Coordinator
 from .errors import ContractError, PersistenceError
+from .persistence import create_provider, validate_provider
 from .policy import EffectiveOperatorPolicy
 from .runtime import LocalRuntime
-from .scheduling import TERMINAL
-from .values import digest, freeze, validate_value
+from .scheduling import ExecutionCommands, TERMINAL
+from .values import digest, freeze, thaw, validate_value
 
 
 class _WorkerRuntime(LocalRuntime):
@@ -42,8 +46,41 @@ class _BudgetCancellation(threading.Event):
             return True
         now = self._clock()
         if now < self._floor:
-            raise PersistenceError('CLOCK_REGRESSION', 'Clock is behind the claimed attempt')
+            raise PersistenceError("CLOCK_REGRESSION", 'Clock is behind the claimed attempt')
         return now >= self._deadline
+
+
+class _RecordBuffer:
+    """Bounded diagnostic history with explicit loss and sink-failure counters."""
+    def __init__(self, limit, sink):
+        self._records = deque(maxlen=limit)
+        self._sink = sink
+        self.generated = 0
+        self.evicted = 0
+        self.sink_failures = 0
+
+    def append(self, record):
+        self.generated += 1
+        if len(self._records) == self._records.maxlen:
+            self.evicted += 1
+        self._records.append(record)
+        if self._sink is not None:
+            try:
+                returned = self._sink(freeze(record))
+                if inspect.isawaitable(returned):
+                    if inspect.iscoroutine(returned):
+                        returned.close()
+                    raise TypeError('Record sink must be synchronous')
+            except Exception:
+                self.sink_failures += 1
+
+    def __iter__(self):
+        return iter(self._records)
+
+    def stats(self):
+        return {"generated": self.generated, "buffered": len(self._records),
+                "buffer_evictions": self.evicted, "sink_configured": self._sink is not None,
+                "sink_failures": self.sink_failures}
 
 
 class ScheduledRuntime:
@@ -51,24 +88,29 @@ class ScheduledRuntime:
 
     submit returns committed acceptance; run/wait await actual business completion.
     Cancelling or timing out a waiter never cancels owned work. close drains work.
-    A command failure blocks that execution without replaying its business method.
+    A command failure blocks that execution without replaying its business method;
+    claims left by a fenced owner are requeued automatically (pure/read only).
     """
-    def __init__(self, commands, *, workers=4, poll_interval=.01, resources=None, max_records=1000):
+    def __init__(self, commands, *, workers=4, poll_interval=.01, resources=None, max_records=1000,
+                 record_sink=None):
         if type(workers) is not int or workers < 1 or type(max_records) is not int or max_records < 1:
-            raise ContractError('INVALID_RUNTIME', 'Worker and record budgets must be positive integers')
+            raise ContractError("INVALID_RUNTIME", 'Worker and record budgets must be positive integers')
         if type(poll_interval) not in (int, float) or not math.isfinite(poll_interval) or poll_interval <= 0:
-            raise ContractError('INVALID_RUNTIME', 'Polling interval must be positive and finite')
+            raise ContractError("INVALID_RUNTIME", 'Polling interval must be positive and finite')
+        if record_sink is not None and (not callable(record_sink) or inspect.iscoroutinefunction(record_sink)):
+            raise ContractError("INVALID_RUNTIME", 'Record sink must be a synchronous callable')
         self.commands = commands
         self.workers, self.poll_interval = workers, poll_interval
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix='microflow-business')
         self._worker = _WorkerRuntime(commands.release, resources, self._pool)
-        self._records = deque(maxlen=max_records)
+        self._records = _RecordBuffer(max_records, record_sink)
         self._worker_id = uuid.uuid4().hex
         self._loop = None
         self._tracked = set()
         self._jobs = {}
         self._unconfirmed = set()
         self._admissions = set()
+        self._waiters = {}
         self._blocked = {}
         self._pump_task = None
         self._closing = False
@@ -77,14 +119,52 @@ class ScheduledRuntime:
     def _bind(self):
         loop = asyncio.get_running_loop()
         if self._closed:
-            raise ContractError('RUNTIME_CLOSED', 'Runtime is closed')
+            raise ContractError("RUNTIME_CLOSED", 'Runtime is closed')
         if self._loop is not None and self._loop is not loop:
-            raise ContractError('RUNTIME_LOOP_MISMATCH', 'Runtime belongs to another event loop')
+            raise ContractError("RUNTIME_LOOP_MISMATCH", 'Runtime belongs to another event loop')
         self._loop = loop
 
     async def _command(self, method, *args, **kwargs):
         # State I/O uses the host pool, separate from business execution capacity.
         return await asyncio.to_thread(method, *args, **kwargs)
+
+    @classmethod
+    def launch(cls, release, persistence=None, *, workers=4, poll_interval=.01, resources=None,
+               max_records=1000, record_sink=None, clock=None, operation_scopes=None):
+        """Assemble a runtime from a persistence configuration; default is memory.
+
+        ``persistence`` accepts a provider instance, a kind string ("memory" or
+        "sqlite"), or a config mapping ({"kind": "sqlite", "path": ...}; kind
+        defaults to "memory"). A durable provider yields a durable coordinator
+        with protocol_test=False; the ephemeral memory provider yields the
+        protocol-test drill path. This classmethod is the only wiring point
+        where execution meets a concrete store — execution modules themselves
+        depend on the persistence port only. The host releases the underlying
+        coordinator via ``runtime.commands.coordinator.close()`` for a clean
+        ownership handover.
+        """
+        if persistence is None or isinstance(persistence, (str, Mapping)):
+            config = {"kind": persistence} if type(persistence) is str else dict(persistence or {})
+            kind = config.pop("kind", "memory")
+            provider = create_provider(kind, config or None)
+        else:
+            provider = persistence
+            if not callable(getattr(provider, "describe", None)) or not isinstance(
+                    getattr(provider, "config", None), Mapping):
+                raise PersistenceError("PROVIDER_PROTOCOL",
+                                       "Injected provider must describe itself and expose its resolved configuration")
+        capabilities = provider.describe().capabilities
+        durable = all(getattr(capabilities, name) for name in
+                      ("atomic_batch", "conditional_write", "request_deduplication",
+                       "durable_ack", "consistent_recovery"))
+        validate_provider(provider, thaw(provider.config), expected_binding=provider.binding,
+                          durable=durable, ownership_scope=capabilities.scope if durable else None)
+        coordinator = Coordinator(provider.state, durable=durable)
+        commands = ExecutionCommands(coordinator, release, binding=provider.binding,
+                                     protocol_test=not durable, clock=clock,
+                                     operation_scopes=operation_scopes)
+        return cls(commands, workers=workers, poll_interval=poll_interval, resources=resources,
+                   max_records=max_records, record_sink=record_sink)
 
     async def _watch(self, execution_id):
         state = await self._command(self.commands.query, execution_id)
@@ -97,9 +177,9 @@ class ScheduledRuntime:
     async def submit(self, flow_id, data, *, request_id):
         self._bind()
         if self._closing:
-            raise ContractError('RUNTIME_CLOSED', 'Runtime no longer accepts work')
+            raise ContractError("RUNTIME_CLOSED", 'Runtime no longer accepts work')
         if len(self._admissions) >= self.commands.max_active:
-            raise ContractError('EXECUTION_BACKPRESSURE', 'Pending admission budget exhausted')
+            raise ContractError("EXECUTION_BACKPRESSURE", 'Pending admission budget exhausted')
         validate_value(data)
         data = freeze(data)
         async def admitting():
@@ -118,19 +198,40 @@ class ScheduledRuntime:
     async def wait(self, execution_id, *, timeout=None):
         self._bind()
         self._validate_timeout(timeout)
+        if type(execution_id) is not str or not execution_id or len(execution_id) > 256:
+            raise ContractError("INVALID_COMMAND", 'execution_id must be a nonempty string of at most 256 characters')
+        # Multiple clients awaiting the same execution share one poller. A
+        # disconnected or timed-out waiter must not cancel another waiter or
+        # the accepted business work.
         async def waiting():
             while True:
                 state = await self._watch(execution_id)
                 if execution_id in self._blocked:
-                    raise PersistenceError('EXECUTION_BLOCKED', 'Execution needs host intervention',
+                    raise PersistenceError("EXECUTION_BLOCKED", 'Execution needs host intervention',
                                            execution_id=execution_id, cause_code=self._blocked[execution_id])
                 if state['status'] in TERMINAL and not any(key[0] == execution_id for key in self._unconfirmed):
                     return state
                 await asyncio.sleep(self.poll_interval)
-        # wait_for cancels only this polling waiter, never the pump or business jobs.
-        if timeout is None:
-            return await waiting()
-        return await asyncio.wait_for(waiting(), timeout)
+        entry = self._waiters.get(execution_id)
+        if entry is None:
+            task = asyncio.create_task(waiting())
+            entry = [task, 0]
+            self._waiters[execution_id] = entry
+        task = entry[0]
+        entry[1] += 1
+        try:
+            if timeout is None:
+                return await asyncio.shield(task)
+            return await asyncio.wait_for(asyncio.shield(task), timeout)
+        finally:
+            entry[1] -= 1
+            if entry[1] == 0:
+                if self._waiters.get(execution_id) is entry:
+                    del self._waiters[execution_id]
+                if not task.done():
+                    task.cancel()
+                elif not task.cancelled():
+                    task.exception()  # Consume a failure if all waiters disconnected.
 
     async def run(self, flow_id, data, *, request_id, timeout=None):
         self._validate_timeout(timeout)
@@ -140,7 +241,7 @@ class ScheduledRuntime:
     @staticmethod
     def _validate_timeout(timeout):
         if timeout is not None and (type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout < 0):
-            raise ContractError('INVALID_WAIT_TIMEOUT', 'Wait timeout must be nonnegative and finite')
+            raise ContractError("INVALID_WAIT_TIMEOUT", 'Wait timeout must be nonnegative and finite')
 
     async def cancel(self, execution_id, *, request_id):
         self._bind()
@@ -151,6 +252,10 @@ class ScheduledRuntime:
     @property
     def records(self):
         return tuple(freeze(record) for record in self._records)
+
+    @property
+    def record_stats(self):
+        return freeze(self._records.stats())
 
     @property
     def blocked(self):
@@ -245,7 +350,20 @@ class ScheduledRuntime:
                             self._jobs[key] = asyncio.create_task(self._execute(task, cancel, state['options'])), cancel
                     if (not any(key[0] == execution_id for key in self._jobs)
                             and any(n['status'] == 'CLAIMED' for n in state['nodes'].values())):
-                        raise PersistenceError('RECOVERY_REQUIRED', 'Existing claimed work cannot be automatically redelivered')
+                        # 接管即失联证明：acquire 互斥保证新 owner 租约只可能来自旧租约
+                        # 过期或释放。纯/读尝试经 recover 重派收敛；修订竞争下一轮重试。
+                        revision = await self._command(self.commands.coordinator.view_record,
+                                                       'execution/' + execution_id)
+                        try:
+                            await self._command(self.commands.recover, execution_id,
+                                request_id=digest({'operation': 'recover', 'execution_id': execution_id,
+                                                   'revision': revision.revision}),
+                                expected_revision=revision.revision)
+                            state = await self._command(self.commands.query, execution_id)
+                        except PersistenceError as error:
+                            if error.diagnostic.error_code != 'REVISION_CONFLICT':
+                                raise
+                            state = await self._command(self.commands.query, execution_id)
                 except Exception as error:
                     self._block(execution_id, error)
             if self._tracked or self._jobs:

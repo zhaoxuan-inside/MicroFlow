@@ -69,7 +69,7 @@ class CatalogGuardTests(unittest.TestCase):
         raised = set()
         pattern = re.compile(r'(?:ContractError|MicroFlowError|PersistenceError)\(\s*"([A-Z][A-Z_]*)"'
                              r'|_error\("([A-Z][A-Z_]*)"')
-        for path in sorted(source.glob("*.py")):
+        for path in sorted(source.rglob("*.py")):
             for match in pattern.finditer(path.read_text(encoding="utf-8")):
                 raised.add(match.group(1) or match.group(2))
         self.assertEqual(raised, set(DIAGNOSTICS),

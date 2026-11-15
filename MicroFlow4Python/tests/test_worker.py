@@ -78,6 +78,39 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await runtime.wait(execution, timeout=2))['status'], 'SUCCEEDED')
         self.assertEqual(calls, [1, 2])
 
+    async def test_waiters_share_polling_and_cancel_independently(self):
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def blocking(input, output, context, metrix, debug, log):
+            entered.set()
+            await release.wait()
+            output.set('n', input['n'] + 1)
+            return True
+        commands, _ = self.make(blocking)
+        original_query = commands.query
+        queries = []
+        def counted_query(execution_id):
+            queries.append(execution_id)
+            return original_query(execution_id)
+        commands.query = counted_query
+        async with ScheduledRuntime(commands, workers=1, poll_interval=.05) as runtime:
+            accepted = await runtime.submit('example', {'n': 1}, request_id='shared-wait')
+            await asyncio.wait_for(entered.wait(), 1)
+            queries.clear()
+            waiters = [asyncio.create_task(runtime.wait(accepted['execution_id'], timeout=2)) for _ in range(20)]
+            try:
+                await asyncio.sleep(.13)
+                self.assertLess(len(queries), 15, 'waiters should share one polling loop')
+                waiters[0].cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await waiters[0]
+                with self.assertRaises(TimeoutError):
+                    await runtime.wait(accepted['execution_id'], timeout=.01)
+            finally:
+                release.set()
+            results = await asyncio.gather(*waiters[1:])
+            self.assertTrue(all(result['status'] == 'SUCCEEDED' for result in results))
+            self.assertFalse(runtime._waiters)
+
     async def test_explicit_cancel_cooperates_without_cancelling_live_thread(self):
         entered, release = threading.Event(), threading.Event()
         def blocking(input, output, context, metrix, debug, log):
@@ -219,19 +252,60 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(.01)
             self.assertEqual((await runtime.wait(execution, timeout=2))['output']['data']['n'], 3)
 
-    async def test_preexisting_claim_requires_recovery_and_is_not_replayed(self):
+    async def test_lease_takeover_requeues_lost_pure_attempt_without_replay(self):
         calls = []
-        def forbidden(input, output, context, metrix, debug, log):
-            calls.append(1)
+        def counted(input, output, context, metrix, debug, log):
+            calls.append(input['n'])
+            output.set('n', input['n'] + 1)
             return True
-        commands, _ = self.make(forbidden)
+        commands, store = self.make(counted)
         execution = commands.accept('example', {'n': 1}, request_id='accept')['execution_id']
-        commands.claim(execution, 'first', worker_id='lost', request_id='claim')
-        async with ScheduledRuntime(commands) as runtime:
-            with self.assertRaises(PersistenceError) as caught:
-                await runtime.wait(execution, timeout=2)
-            self.assertEqual(caught.exception.diagnostic.details['cause_code'], 'RECOVERY_REQUIRED')
-        self.assertEqual(calls, [])
+        lost = commands.claim(execution, 'first', worker_id='lost', request_id='claim')
+        release, binding = commands.release, commands.binding
+        commands.coordinator.close()  # 模拟旧 worker 失联：新 owner 必然 fence 旧代际
+        revived = ExecutionCommands(Coordinator(store), release, binding=binding, protocol_test=True)
+        async with ScheduledRuntime(revived) as runtime:
+            result = await runtime.wait(execution, timeout=2)
+        self.assertEqual(result['status'], 'SUCCEEDED')
+        self.assertEqual(result['nodes']['first']['output']['data']['n'], 2)
+        self.assertEqual(result['nodes']['second']['output']['data']['n'], 3)
+        self.assertEqual(calls, [1, 2])  # 失联的 first 与其后继 second 各执行一次
+        with self.assertRaisesRegex(PersistenceError, 'STALE_ATTEMPT'):
+            revived.complete(lost, status='SUCCEEDED', data={'n': 2}, request_id='late')
+        events = [record['event'] for record in runtime.records]
+        self.assertEqual(events.count('attempt_started'), 2)
+        recovered = [r for k, r in store.load_recovery_view().records.items() if k.startswith('event-intent/')
+                     and r['event'] == 'attempt_recovered']
+        self.assertEqual(len(recovered), 1)
+
+    async def test_record_sink_receives_lifecycle_and_reports_buffer_evictions(self):
+        commands, _ = self.make()
+        received = []
+        def sink(record):
+            received.append(record)
+            with self.assertRaises(TypeError):
+                record['event'] = 'changed'
+        async with ScheduledRuntime(commands, max_records=2, record_sink=sink) as runtime:
+            result = await runtime.run('example', {'n': 1}, request_id='record-sink', timeout=2)
+            self.assertEqual(result['status'], 'SUCCEEDED')
+        events = [record['event'] for record in received]
+        for event in ('attempt_started', 'attempt_finished', 'invocation_completed'):
+            self.assertEqual(events.count(event), 2)
+        stats = runtime.record_stats
+        self.assertEqual(stats['generated'], len(received))
+        self.assertEqual(stats['buffered'], 2)
+        self.assertEqual(stats['buffer_evictions'], len(received) - 2)
+        self.assertEqual(stats['sink_failures'], 0)
+
+    async def test_record_sink_failure_is_observable_and_does_not_change_result(self):
+        commands, _ = self.make()
+        def broken_sink(record):
+            raise RuntimeError('sink unavailable')
+        async with ScheduledRuntime(commands, record_sink=broken_sink) as runtime:
+            result = await runtime.run('example', {'n': 1}, request_id='broken-sink', timeout=2)
+            self.assertEqual(result['status'], 'SUCCEEDED')
+        self.assertEqual(runtime.record_stats['sink_failures'], runtime.record_stats['generated'])
+        self.assertEqual(len(runtime.records), runtime.record_stats['generated'])
 
     async def test_records_are_bounded_and_debug_pause_is_refused(self):
         def pause(input, output, context, metrix, debug, log):

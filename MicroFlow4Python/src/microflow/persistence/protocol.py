@@ -1,9 +1,14 @@
-"""Host-injected persistence protocols. No production medium is bundled."""
+"""microflow-persistence-v1 port: the persistence contract every provider implements.
+
+The core bundles two providers behind this port: memory (ephemeral, the
+default) and SQLite (durable on one instance). No network medium is bundled;
+larger media implement the same protocols and are injected by the host.
+"""
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol, Literal
-from .errors import PersistenceError
-from .values import freeze, validate_value, digest
-from .schema import check_schema, validate
+from ..errors import PersistenceError
+from ..values import freeze, validate_value, digest
+from ..schema import check_schema, validate
 
 PROTOCOL_VERSION = "microflow-persistence-v1"
 
@@ -169,6 +174,11 @@ class StateStore(Protocol):
     write must return UNKNOWN. Confirmed receipts retain the original JSON result.
     RecoveryView is a consistent partition snapshot, not mixed per-key reads.
     Implementations must also offer bounded query/export for operational histories.
+
+    Optional extension: load_record_view(key) may return a RecoveryView containing
+    only that key (or an empty map), with revision and binding revision read
+    atomically with the record. It has the same consistency as recovery reads.
+    Consumers fall back to load_recovery_view when the extension is absent.
     """
     capabilities: Capabilities
 

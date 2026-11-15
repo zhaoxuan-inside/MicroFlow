@@ -4,10 +4,11 @@
 
 ## 1. 五分钟心智模型
 
-- **业务 = 算子 + 编排配置**。算子是契约明确、副作用如实声明、边界固定的业务步骤；业务功能由编排配置（标准 JSON）组织算子而成。
+- **业务 = 算子 + 编排配置**。算子是契约明确、副作用如实声明、边界固定的业务步骤；业务功能可由 `.mf` 声明式 DSL 组织，原 JSON 项目仍兼容。
 - **发布快照不可变**。编译产出 release，执行按 release_id 装载；配置改动 = 新版本，不在途热改。
 - **框架管执行机制、状态协议与采集**；持久化介质、分析展示、开发工具归宿主与上层（端口注入）。
-- **当前可验证路径是本地同步演练**（`--ephemeral`）：纯计算/读取算子、静态 DAG 与子图。耐久执行、写入型算子、恢复是协议切片——**未验收的能力不要用，`UNSUPPORTED_*` 拒绝是护栏不是缺陷**。
+- **当前可验证路径是本地同步演练**（`--ephemeral`）：纯计算/读取算子、静态 DAG 与子图。耐久执行、写入型算子确认是协议切片（纯/读失联自动重派已随调度路径落地）——**未验收的能力不要用，`UNSUPPORTED_*` 拒绝是护栏不是缺陷**。
+- **持久化在项目内子模块 `microflow.persistence` 里按配置选择**：默认 `memory`（ephemeral 演练）；`ScheduledRuntime.launch(release, persistence={"kind": "sqlite", "path": ...})` 走单机耐久路径（scope="instance"，非跨主机高可用）。能力不足显式拒绝，不静默降级；Redis 不做 StateStore（无法如实声明 `durable_ack`/`consistent_recovery`）。
 - 两条铁律：**调用成功 ≠ 业务成功**（看 `Output.meta.status`）；**实现状态诚实声明**（内存替身不算生产证据）。
 
 ## 2. 环境准备
@@ -31,7 +32,7 @@ VibeCoding 工具首选 CLI（机器可判定证据），开发者可用等价 P
 | 2 查目录 | `microflow operators <project> --ephemeral` | 算子契约、能力、静态引用计数 | 已实现 |
 | 3 查契约 | `microflow schema <project> <name> --ephemeral` | 单个 Schema 定义 | 已实现 |
 | 4 建算子 | （`scaffold` 规划中）手工按 §4 模板 | 六参数方法 + 注册 + Schema | — |
-| 5 编排 | 编写 flow JSON（§5） | 项目配置 | — |
+| 5 编排 | 编写 flow DSL（§5） | 项目配置 | — |
 | 6 校验 | `microflow check <project> --ephemeral` | releaseId + 诊断（**0 诊断才继续**） | 已实现 |
 | 7 演练 | `microflow run <project> <flow> <input> --ephemeral` | 标准 Output + 节点记录 | 已实现 |
 | 8 影响 | `microflow impact <project> --ephemeral --operator REF` | 引用与上游闭包 | 已实现 |
@@ -70,7 +71,7 @@ registry.register_operator(name="trading.pricing_discount", version="1",
 
 ## 5. 编排配置规范
 
-流程 JSON 骨架见 README「集成与使用」第 2 步。要点：
+流程 DSL 骨架见 README「集成与使用」第 2 步；DSL 只解析声明，不执行 Python。要点：
 
 - **节点类型**：`operator`（默认）/ `subflow` / `route` / `join` / `map` / `loop` / `wait`；动态控制节点的执行尚未接入本地演练器。
 - **映射**：`inputs` 的 `from` 必须以 `flow.input` / `nodes.<id>.output` / `context` 开头；`required` 先于 `default` 判定；多目标重叠 = `MAPPING_CONFLICT`；复杂计算交给算子，表达式只有受限白名单（无 eval）。

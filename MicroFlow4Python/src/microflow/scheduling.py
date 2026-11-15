@@ -6,7 +6,7 @@ from .errors import ContractError, PersistenceError
 from .paths import Field, map_values, parse
 from .persistence import StateBatch, StorageBinding
 from .events import EventIntent
-from .schema import validate
+from .schema import _validate_registered
 from .releases import build_candidate
 from .policy import seconds
 from .timing import BudgetClock
@@ -32,7 +32,8 @@ class ExecutionCommands:
 
     Production requires a durable Coordinator. protocol_test explicitly permits
     ephemeral stores for protocol tests, never production async acceptance.
-    Claimed attempts are not automatically reassigned after a lost worker.
+    A fenced owner's pure/read claims can be requeued by recover(); write
+    effects keep the manual IN_DOUBT confirmation path.
     """
     def __init__(self, coordinator, release, *, binding, protocol_test=False,
                  max_active=100, max_nodes=1000, max_claimed=16, clock=None, operation_scopes=None):
@@ -131,7 +132,7 @@ class ExecutionCommands:
                 "release_id": run["release_id"], "output": run["output"],
                 "protocol_test": self.protocol_test, "durability": "ephemeral" if self.protocol_test else "durable"}
 
-    def _batch(self, key, run, command_id, event, *, operations=None):
+    def _batch(self, key, run, command_id, event, *, operations=None, deletes=()):
         event_id = digest({"execution": run["execution_id"], "command": command_id})
         sequence = run.get("event_sequence", 0) + 1
         run["event_sequence"] = sequence
@@ -143,7 +144,8 @@ class ExecutionCommands:
                   "status": run["status"], "delivery": "PENDING",
                   "content_digest": event_record.content_digest}
         return StateBatch({key: run, "event-intent/" + event_id: intent,
-                           **{"operation/" + oid: record for oid, record in (operations or {}).items()}})
+                           **{"operation/" + oid: record for oid, record in (operations or {}).items()}},
+                          deletes=deletes)
 
     def _transact(self, operation, payload, decide, request_id, expected_revision):
         _id(request_id, "request_id")
@@ -162,7 +164,7 @@ class ExecutionCommands:
         plan = self._preflight(flow_id)
         validate_value(data)
         data = freeze(data)
-        validate(data, self.release.registry.schemas[plan.definition["input_schema"]], "flow.input")
+        _validate_registered(data, self.release.registry.schemas[plan.definition["input_schema"]], "flow.input")
         execution_id = digest({"binding": asdict(self.binding), "request_id": request_id})
         key = "execution/" + execution_id
         def decide(view):
@@ -199,7 +201,8 @@ class ExecutionCommands:
         return self._transact("accept", {"flow_id": flow_id, "input": data}, decide, request_id, expected_revision)
 
     def query(self, execution_id):
-        _, run = self._load(self.coordinator.view(), execution_id)
+        _id(execution_id, "execution_id")
+        _, run = self._load(self.coordinator.view_record("execution/" + execution_id), execution_id)
         return freeze(run)
 
     def ready(self, execution_id):
@@ -289,7 +292,7 @@ class ExecutionCommands:
                 return
             try:
                 data = map_values(plan.definition.get("outputs", {}), self._sources(run))
-                validate(data, self.release.registry.schemas[plan.definition["output_schema"]], "output.data")
+                _validate_registered(data, self.release.registry.schemas[plan.definition["output_schema"]], "output.data")
                 run["status"] = "SUCCEEDED"
                 run["output"] = self._output(run, "SUCCEEDED", data, None)
                 return
@@ -332,7 +335,7 @@ class ExecutionCommands:
                 plan = self.release.flows[run["flow_id"]]
                 op = self.release.registry.operators[plan.definition["nodes"][name]["operator"]]
                 try:
-                    validate(result["data"], self.release.registry.schemas[op.output_schema], "output.data")
+                    _validate_registered(result["data"], self.release.registry.schemas[op.output_schema], "output.data")
                 except ContractError as error:
                     raise ContractError("IDEMPOTENCY_RESULT_INCOMPATIBLE", "Original result cannot satisfy this release") from error
             node.update(status=result["status"], finished_at=now,
@@ -412,7 +415,7 @@ class ExecutionCommands:
             operator = self.release.registry.operators[plan.definition["nodes"][node_id]["operator"]]
             try:
                 data = map_values(plan.definition["nodes"][node_id].get("inputs", {}), self._sources(run))
-                validate(data, self.release.registry.schemas[operator.input_schema], "input")
+                _validate_registered(data, self.release.registry.schemas[operator.input_schema], "input")
             except ContractError:
                 node["status"] = "FAILED"
                 node["finished_at"] = now
@@ -511,7 +514,7 @@ class ExecutionCommands:
             self._expire(run, now)
             if status == "SUCCEEDED":
                 try:
-                    validate(data, self.release.registry.schemas[operator.output_schema], "output.data")
+                    _validate_registered(data, self.release.registry.schemas[operator.output_schema], "output.data")
                 except ContractError:
                     final_status, code = "FAILED", "OUTPUT_CONTRACT_VIOLATION"
             if final_status != "SUCCEEDED":
@@ -541,7 +544,7 @@ class ExecutionCommands:
         _id(node_id, "node_id")
         if expected_revision is None:
             raise ContractError("INVALID_RECOVERY_COMMAND", "Recovery requires an expected revision")
-        if not self.protocol_test and not self.coordinator.store.capabilities.ownership_fencing:
+        if not self.protocol_test and not self.coordinator.capabilities.ownership_fencing:
             raise PersistenceError("CAPABILITY_REQUIRED", "Recovery requires declared ownership fencing")
         def decide(view):
             key, run = self._load(view, execution_id)
@@ -563,6 +566,54 @@ class ExecutionCommands:
             return self._batch(key, run, request_id, "attempt_in_doubt", operations=operations), self._summary(run)
         return self._transact("mark_in_doubt", {"execution_id": execution_id, "node_id": node_id},
                               decide, request_id, expected_revision)
+
+    def recover(self, execution_id, *, request_id, expected_revision):
+        """Requeue a fenced owner's pure/read claims; never touches live attempts.
+
+        A new owner token exists only after the previous lease expired or was
+        released (acquire enforces exclusivity), so a foreign CLAIMED attempt
+        is lost by protocol. Pure and read operators have no external effects:
+        their business identity record is discarded and the node re-enters
+        dispatch with a fresh attempt epoch on the next claim. Write effects
+        keep the manual IN_DOUBT confirmation path; an attempt of the current
+        owner is never requeued here — its worker converges it or blocks.
+        """
+        _id(execution_id, "execution_id")
+        if expected_revision is None:
+            raise ContractError("INVALID_RECOVERY_COMMAND", "Recovery requires an expected revision")
+        if not self.protocol_test and not self.coordinator.capabilities.ownership_fencing:
+            raise PersistenceError("CAPABILITY_REQUIRED", "Recovery requires declared ownership fencing")
+        def decide(view):
+            key, run = self._load(view, execution_id)
+            now = self._observe(run)
+            if run["status"] in TERMINAL:
+                return None, self._summary(run)
+            self._expire(run, now)
+            plan = self.release.flows[run["flow_id"]]
+            requeued, deletes = [], []
+            for name, node in run["nodes"].items():
+                if node["status"] != "CLAIMED":
+                    continue
+                if digest(node["owner"]) == digest(asdict(self.coordinator.owner)):
+                    continue
+                operator = self.release.registry.operators[plan.definition["nodes"][name]["operator"]]
+                if (operator.capabilities.get("effect") not in ("pure", "read")
+                        or (operator.fallback and operator.fallback_capabilities.get("effect") not in ("pure", "read"))):
+                    raise ContractError("UNSUPPORTED_SCHEDULED_EFFECT",
+                                        "Lost write attempts keep the confirmation protocol", name)
+                if node.get("operation_id"):
+                    # 纯/读无外部效应：失联 attempt 的业务身份可安全废弃，重派后重建
+                    deletes.append("operation/" + node["operation_id"])
+                node.update(status="READY", owner=None, worker_id=None, input=None, claimed_at=None,
+                            attempt_deadline_at=None, timeout_code=None, cancel_requested=False,
+                            operation_id=None, operation_request_digest=None)
+                self._mark_ready(run, name, now)
+                requeued.append(name)
+            if not requeued:
+                raise ContractError("NOTHING_TO_RECOVER", "No fenced attempt is available to requeue")
+            self._advance(run, now)
+            return self._batch(key, run, request_id, "attempt_recovered", deletes=tuple(deletes)), self._summary(run)
+        return self._transact("recover", {"execution_id": execution_id}, decide, request_id, expected_revision)
 
     def cancel(self, execution_id, *, request_id, expected_revision=None):
         def decide(view):

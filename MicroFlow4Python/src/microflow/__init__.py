@@ -4,15 +4,18 @@ from .registry import Registry, discover
 from .sdk import Context, Debug, Input, Log, Metrics, Output
 from .runtime import LocalRuntime, RunResult
 from .worker import ScheduledRuntime
+from .persistence import create_provider, describe_provider_config
 from .resources import LeaseRequest, ResourceLease, ResourceLeaseProvider, MemoryLeaseProvider
 from .events import EventIntent, EventStore, MemoryEventStore
 from .impact import (ImpactIndex, build_index, describe_index, flow_references,
                      operator_flows, operator_references, upstream_flows)
 from .codes import describe_diagnostics
+from .dsl import parse_project
 
 __version__ = "0.1.0"
 __all__ = ["Context", "ContractError", "Debug", "Input", "Log", "Metrics",
            "LocalRuntime", "RunResult", "ScheduledRuntime", "MicroFlowError", "Output", "PersistenceError", "Registry", "discover",
+           "create_provider", "describe_provider_config",
            "EventIntent", "EventStore", "MemoryEventStore",
            "ImpactIndex", "build_index", "describe_index", "flow_references",
-           "operator_flows", "operator_references", "upstream_flows", "describe_diagnostics"]
+           "operator_flows", "operator_references", "upstream_flows", "describe_diagnostics", "parse_project"]

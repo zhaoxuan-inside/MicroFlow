@@ -17,7 +17,7 @@ from .errors import Cancelled, ContractError
 from . import expressions
 from .paths import map_values
 from .policy import seconds
-from .schema import validate
+from .schema import _validate_registered
 from .sdk import Context, Debug, Input, Log, Metrics, Output
 from .values import freeze, thaw, validate_value
 
@@ -139,7 +139,7 @@ class LocalRuntime:
         resolution, status, error, data_result = "main", "FAILED", None, None
         output = Output()
         try:
-            validate(data, self.release.registry.schemas[op.input_schema], "input")
+            _validate_registered(data, self.release.registry.schemas[op.input_schema], "input")
             debug.check_cancelled()
             if time.monotonic() >= state["deadline"]:
                 raise ContractError("DEADLINE_EXCEEDED", "Root deadline exceeded")
@@ -182,7 +182,7 @@ class LocalRuntime:
                     raise ContractError("ATTEMPT_TIMEOUT", "Attempt exhausted its time budget")
             if accepted:
                 try:
-                    validate(output.data, self.release.registry.schemas[op.output_schema], "output.data")
+                    _validate_registered(output.data, self.release.registry.schemas[op.output_schema], "output.data")
                 except ContractError as exc:
                     raise ContractError("OUTPUT_CONTRACT_VIOLATION", "Invalid successful output", exc.diagnostic.path) from exc
                 status, data_result = "SUCCEEDED", thaw(output.data)
@@ -246,7 +246,7 @@ class LocalRuntime:
         skipped_nodes: set[str] = set()
         ancestor_deadline = state["deadline"]
         try:
-            validate(data, self.release.registry.schemas[definition["input_schema"]], "flow.input")
+            _validate_registered(data, self.release.registry.schemas[definition["input_schema"]], "flow.input")
             if state["cancel"].is_set() and not plan.graph.order:
                 return {"data": None, "meta": {"status": "CANCELLED", "releaseId": self.release.release_id,
                         "traceId": state["trace_id"], "invocationId": invocation, "stopReason": None},
@@ -317,7 +317,7 @@ class LocalRuntime:
             else:
                 result_data = map_values(definition.get("outputs", {}), {
                     "flow": {"input": data}, "nodes": local_nodes, "context": {"options": flow_options}})
-                validate(result_data, self.release.registry.schemas[definition["output_schema"]], "flow.output.data")
+                _validate_registered(result_data, self.release.registry.schemas[definition["output_schema"]], "flow.output.data")
         except ContractError as exc:
             result_data, error, status = None, _error(exc.diagnostic.error_code, "flow", exc), "FAILED"
         finally:

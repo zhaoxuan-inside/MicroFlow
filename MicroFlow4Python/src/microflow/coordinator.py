@@ -3,7 +3,7 @@ import threading
 import uuid
 from dataclasses import replace
 from .errors import PersistenceError
-from .persistence import CommitReceipt, StateBatch
+from .persistence import CommitReceipt, RecoveryView, StateBatch
 from .values import digest, thaw
 
 
@@ -23,6 +23,21 @@ class Coordinator:
 
     def view(self):
         return self.store.load_recovery_view()
+
+    @property
+    def capabilities(self):
+        """Capabilities of the injected store; upper layers read this, not the store."""
+        return self.store.capabilities
+
+    def view_record(self, key):
+        """Use an optional atomic targeted read; retain old-provider behavior."""
+        reader = getattr(self.store, "load_record_view", None)
+        if not callable(reader):
+            return self.view()
+        view = reader(key)
+        if not isinstance(view, RecoveryView) or view.cursor is not None or set(view.records) - {key}:
+            raise PersistenceError("PROVIDER_PROTOCOL", "Invalid targeted recovery view")
+        return view
 
     def _receipt(self, receipt, request_id):
         if not isinstance(receipt, CommitReceipt) or receipt.request_id != request_id:

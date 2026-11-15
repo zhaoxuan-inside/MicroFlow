@@ -8,6 +8,7 @@ from . import __version__
 from .errors import MicroFlowError
 from .registry import discover
 from .compiler import compile_release
+from .dsl import parse_project
 from .releases import build_candidate
 from .runtime import LocalRuntime
 from .values import load_json, thaw
@@ -45,7 +46,8 @@ CAPABILITIES = {
 
 
 def _read_project(path):
-    config = load_json(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    config = parse_project(text) if path.suffix == ".mf" else load_json(text)
     if not isinstance(config, dict) or set(config) - {"modules", "flows", "defaults"}:
         raise ContractError("INVALID_PROJECT", "Expected modules, flows and optional defaults")
     if not isinstance(config.get("modules"), list) or any(type(p) is not str for p in config["modules"]):

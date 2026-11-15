@@ -1,17 +1,57 @@
 import concurrent.futures
-from dataclasses import replace
+from dataclasses import asdict, replace
 import unittest
 from microflow.coordinator import Coordinator
 from microflow.errors import ContractError, PersistenceError
-from microflow.persistence import StorageBinding, CommitReceipt
+from microflow.idempotency import OperationScope
+from microflow.persistence import StorageBinding, CommitReceipt, RecoveryView
 from microflow.scheduling import ExecutionCommands
 from microflow.testing import MemoryStateStore
 from microflow.values import digest, thaw
 from tests.test_compiler import registry, flow, EPHEMERAL
+from tests.test_policy import DURABLE
 from microflow.compiler import compile_release
 
 
 class SchedulingTests(unittest.TestCase):
+    def test_query_uses_targeted_view_with_fallback_and_binding_guard(self):
+        class CountingStore(MemoryStateStore):
+            full_reads = 0
+            def load_recovery_view(self):
+                self.full_reads += 1
+                return super().load_recovery_view()
+        store = CountingStore()
+        commands, _ = self.make(store=store)
+        execution = self.accept(commands)
+        store.full_reads = 0
+        self.assertEqual(commands.query(execution)['status'], 'ACCEPTED')
+        self.assertEqual(store.full_reads, 0)
+        wrong = ExecutionCommands(commands.coordinator, commands.release,
+                                  binding=replace(commands.binding, namespace='other'), protocol_test=True)
+        with self.assertRaisesRegex(PersistenceError, 'EXECUTION_BINDING_MISMATCH'):
+            wrong.query(execution)
+        store.load_record_view = None
+        self.assertEqual(commands.query(execution)['status'], 'ACCEPTED')
+        self.assertGreater(store.full_reads, 0)
+
+    def test_query_rejects_malformed_targeted_view(self):
+        commands, store = self.make()
+        execution = self.accept(commands)
+        store.load_record_view = lambda key: {'records': {}}
+        with self.assertRaisesRegex(PersistenceError, 'PROVIDER_PROTOCOL'):
+            commands.query(execution)
+
+    def test_query_rejects_targeted_view_with_changed_binding(self):
+        commands, store = self.make()
+        execution = self.accept(commands)
+        original = store.load_record_view
+        def changed(key):
+            view = original(key)
+            return RecoveryView(view.revision, view.records, binding_revision='wrong')
+        store.load_record_view = changed
+        with self.assertRaisesRegex(PersistenceError, 'BINDING_MISMATCH'):
+            commands.query(execution)
+
     def test_fenced_non_idempotent_claim_is_isolated_without_replay(self):
         commands, store = self.make()
         execution = self.accept(commands)
@@ -26,9 +66,86 @@ class SchedulingTests(unittest.TestCase):
         with self.assertRaisesRegex(PersistenceError, 'STALE_ATTEMPT'):
             restored.complete(task, status='SUCCEEDED', data={'n': 2}, request_id='late')
 
-    def make(self, definition=None, store=None, **options):
+    def test_recover_requeues_lost_pure_attempt_and_late_completion_is_stale(self):
+        commands, store = self.make()
+        execution = self.accept(commands)
+        task = self.claim(commands, execution)
+        release, binding = commands.release, commands.binding
+        commands.coordinator.close()
+        restored = ExecutionCommands(Coordinator(store), release, binding=binding, protocol_test=True)
+        revision = store.load_recovery_view().revision
+        with self.assertRaisesRegex(ContractError, 'INVALID_RECOVERY_COMMAND'):
+            restored.recover(execution, request_id='recover', expected_revision=None)
+        result = restored.recover(execution, request_id='recover', expected_revision=revision)
+        self.assertEqual(result['status'], 'RUNNING')
+        state = restored.query(execution)
+        node = state['nodes']['first']
+        self.assertEqual(node['status'], 'READY')
+        self.assertIsNone(node['owner'])
+        self.assertIsNone(node['worker_id'])
+        self.assertIsNone(node['input'])
+        self.assertEqual(node['attempt_epoch'], 1)
+        self.assertEqual(restored.ready(execution), ('first',))
+        with self.assertRaisesRegex(PersistenceError, 'STALE_ATTEMPT'):
+            restored.complete(task, status='SUCCEEDED', data={'n': 2}, request_id='late')
+        # 新 attempt 需要新的请求身份：原 request_id 的 claim 回放固定返回旧 owner 的任务
+        with self.assertRaisesRegex(PersistenceError, 'OWNER_FENCED'):
+            self.claim(restored, execution)
+        reclaimed = self.claim(restored, execution, request='reclaim')
+        self.assertEqual(reclaimed['attempt_epoch'], 2)
+        restored.complete(reclaimed, status='SUCCEEDED', data={'n': 2}, request_id='finish')
+        second = self.claim(restored, execution, 'second', 'reclaim-second')
+        outcome = restored.complete(second, status='SUCCEEDED', data={'n': 3}, request_id='finish-second')
+        self.assertEqual(outcome['status'], 'SUCCEEDED')
+        self.assertEqual(outcome['output']['data'], {'n': 3})
+        events = [r for k, r in store.load_recovery_view().records.items() if k.startswith('event-intent/')]
+        self.assertIn('attempt_recovered', [event['event'] for event in events])
+
+    def test_recover_discards_operation_identity_of_lost_pure_attempt(self):
+        definition = flow()
+        definition['nodes']['first']['policy'] = {'idempotency': {'enabled': True,
+                                                                  'key_paths': ['input.n'],
+                                                                  'result_retention': '10s'}}
+        scope = {'increment@1': OperationScope('tenant-a', 'example', 'increment', '1')}
+        commands, store = self.make(definition, defaults=None, capabilities=DURABLE, operation_scopes=scope)
+        execution = self.accept(commands)
+        self.claim(commands, execution)
+        records = [k for k in store.load_recovery_view().records if k.startswith('operation/')]
+        self.assertEqual(len(records), 1)
+        release, binding = commands.release, commands.binding
+        commands.coordinator.close()
+        restored = ExecutionCommands(Coordinator(store), release, binding=binding, protocol_test=True,
+                                     operation_scopes=scope)
+        restored.recover(execution, request_id='recover', expected_revision=store.load_recovery_view().revision)
+        self.assertEqual([k for k in store.load_recovery_view().records if k.startswith('operation/')], [])
+        self.assertEqual(restored.query(execution)['nodes']['first']['status'], 'READY')
+        reclaimed = self.claim(restored, execution, request='reclaim')
+        rebuilt = [r for k, r in store.load_recovery_view().records.items() if k.startswith('operation/')]
+        self.assertEqual(len(rebuilt), 1)
+        self.assertEqual(rebuilt[0]['origin']['owner'], asdict(restored.coordinator.owner))
+        outcome = restored.complete(reclaimed, status='SUCCEEDED', data={'n': 2}, request_id='finish')
+        second = self.claim(restored, execution, 'second', 'reclaim-second')
+        outcome = restored.complete(second, status='SUCCEEDED', data={'n': 3}, request_id='finish-second')
+        self.assertEqual(outcome['status'], 'SUCCEEDED')
+        replay = restored.complete(second, status='SUCCEEDED', data={'n': 3}, request_id='finish-second')
+        self.assertEqual(replay, outcome)
+
+    def test_recover_needs_a_fenced_claim_and_a_expected_revision(self):
+        commands, _ = self.make()
+        execution = self.accept(commands)
+        revision = commands.coordinator.view_record('execution/' + execution).revision
+        with self.assertRaisesRegex(ContractError, 'NOTHING_TO_RECOVER'):
+            commands.recover(execution, request_id='empty', expected_revision=revision)
+        self.claim(commands, execution)
+        revision = commands.coordinator.view_record('execution/' + execution).revision
+        with self.assertRaisesRegex(ContractError, 'NOTHING_TO_RECOVER'):
+            commands.recover(execution, request_id='own-attempt', expected_revision=revision)
+        self.assertEqual(commands.query(execution)['nodes']['first']['status'], 'CLAIMED')
+
+    def make(self, definition=None, store=None, defaults=EPHEMERAL, capabilities=None, **options):
         store = store or MemoryStateStore()
-        release = compile_release(registry(), [definition or flow()], defaults=EPHEMERAL)
+        release = compile_release(registry(), [definition or flow()], defaults=defaults,
+                                  provider_capabilities=capabilities)
         binding = StorageBinding('test', 'runtime-state', 'isolated', store.load_recovery_view().binding_revision, digest({}))
         commands = ExecutionCommands(Coordinator(store), release, binding=binding, protocol_test=True, **options)
         return commands, store
