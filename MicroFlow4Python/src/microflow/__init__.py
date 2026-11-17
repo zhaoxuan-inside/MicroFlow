@@ -11,6 +11,8 @@ from .impact import (ImpactIndex, build_index, describe_index, flow_references,
                      operator_flows, operator_references, upstream_flows)
 from .codes import describe_diagnostics
 from .dsl import parse_project
+from .releases import build_candidate, load_release, publish
+from .platform_graph import convert_canvas_graph
 
 __version__ = "0.1.0"
 __all__ = ["Context", "ContractError", "Debug", "Input", "Log", "Metrics",
@@ -18,4 +20,5 @@ __all__ = ["Context", "ContractError", "Debug", "Input", "Log", "Metrics",
            "create_provider", "describe_provider_config",
            "EventIntent", "EventStore", "MemoryEventStore",
            "ImpactIndex", "build_index", "describe_index", "flow_references",
-           "operator_flows", "operator_references", "upstream_flows", "describe_diagnostics", "parse_project"]
+           "operator_flows", "operator_references", "upstream_flows", "describe_diagnostics", "parse_project",
+           "build_candidate", "load_release", "publish", "convert_canvas_graph"]

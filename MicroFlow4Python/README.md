@@ -133,8 +133,11 @@ CLI 体系依据《CLI 命令体系设计》（八条兼容契约 + 17 命令封
 | `impact <project> --ephemeral [--operator REF] [--flow ID]` | 已实现 | 静态影响反向索引与上游闭包 |
 | `operators <project> --ephemeral` | 已实现 | 算子目录：契约、能力、默认策略与静态引用计数 |
 | `schema <project> <name> --ephemeral` | 已实现 | 单个契约 schema 的版本化定义 |
+| `context <project> <operator-ref> --ephemeral [--tests-dir DIR] [--budget N]` | 已实现 | 算子局部上下文（实现摘要/契约/上下游/相关测试/边界声明）——为 VibeCoding 工具设计 |
+| `scaffold operator <name> --into DIR [--with-fallback] [--proxy metrix,log]` | 已实现 | 生成算子模块、注册与契约测试骨架（只写 --into，永不覆盖） |
+| `scaffold flow <id> --into DIR --operator REF --input-schema NAME --output-schema NAME [--module PATH]` | 已实现 | 生成单流程项目骨架（id/schema 引用/最小节点与输出映射） |
 
-`context`/`test`/`preview`/`diff`/`scaffold`/`query` 按设计随 T15/T14 后续切片落地。
+`test`/`preview`/`diff`/`query` 按设计随 T15/T14 后续切片落地。AI 工具可经 [MicroFlow4MCP](../MicroFlow4MCP/README.md) 直接调用以上全部命令（MCP 工具与 CLI 一一对应）。
 
 ## 状态协调与宿主提供者
 

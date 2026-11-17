@@ -221,7 +221,7 @@ class SchedulingTests(unittest.TestCase):
             self.claim(commands, execution, 'after', 'forbidden')
         done = commands.complete(peer, status='SUCCEEDED', data={'n': 2}, request_id='late')
         self.assertEqual(done['status'], 'FAILED')
-        self.assertEqual(done['output']['error']['code'], 'UNHANDLED_OPERATOR_EXCEPTION')
+        self.assertEqual(done['output']['error']['code'], 'CIRCUIT_BROKEN')
         self.assertEqual(commands.query(execution)['nodes']['peer']['output']['data']['n'], 2)
         self.assertEqual(commands.ready(execution), ())
 

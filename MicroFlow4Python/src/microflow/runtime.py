@@ -154,7 +154,9 @@ class LocalRuntime:
             except Exception as exc:
                 error = _error("UNHANDLED_OPERATOR_EXCEPTION", "main", exc)
                 if op.fallback is None:
-                    state["stop"] = state["stop"] or error
+                    # The node record keeps the failure mode; the run-level latch
+                    # carries the circuit-break semantics the stopReason names.
+                    state["stop"] = state["stop"] or _error("CIRCUIT_BROKEN", "circuit", exc)
                     accepted = False
                     resolution = "unhandled_exception"
                 else:

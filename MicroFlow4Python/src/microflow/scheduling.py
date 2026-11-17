@@ -510,7 +510,9 @@ class ExecutionCommands:
             if status == "SUCCEEDED" and error_code is not None:
                 raise ContractError("INVALID_COMMAND", "Successful completion cannot carry an error")
             if resolution == "unhandled_exception":
-                self._stop(run, _error(error_code))
+                # The run-level latch is the circuit break itself; the node record
+                # keeps the published UNHANDLED_OPERATOR_EXCEPTION failure mode.
+                self._stop(run, _error("CIRCUIT_BROKEN"))
             self._expire(run, now)
             if status == "SUCCEEDED":
                 try:

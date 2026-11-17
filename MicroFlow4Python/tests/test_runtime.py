@@ -61,7 +61,8 @@ class RuntimeTests(unittest.TestCase):
     def test_unhandled_exception_trips_root_and_skips_downstream(self):
         result = LocalRuntime(compiled(throwing)).run("example", {"n": 1})
         self.assertEqual(result.output["meta"]["stopReason"], "CIRCUIT_BROKEN")
-        self.assertEqual(result.output["error"]["code"], "UNHANDLED_OPERATOR_EXCEPTION")
+        # Run-level error is the latch itself; the node record keeps the failure mode.
+        self.assertEqual(result.output["error"]["code"], "CIRCUIT_BROKEN")
         self.assertIsNone(result.nodes["first"]["data"])
         self.assertEqual(result.nodes["second"]["meta"]["status"], "SKIPPED")
         self.assertNotIn("private password", str(thaw(result.output)))

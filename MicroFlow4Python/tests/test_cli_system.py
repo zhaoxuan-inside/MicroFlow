@@ -1,6 +1,9 @@
 import io
 import json
+import os
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -9,8 +12,8 @@ from pathlib import Path
 from microflow import cli
 from microflow.codes import DIAGNOSTICS, PROTOCOL, describe_diagnostics
 
-EXPECTED_COMMANDS = {"capabilities", "check", "describe", "diagnostics", "impact",
-                     "operators", "policy-check", "policy-schema", "run", "schema"}
+EXPECTED_COMMANDS = {"capabilities", "check", "context", "describe", "diagnostics", "impact",
+                     "operators", "policy-check", "policy-schema", "run", "scaffold", "schema"}
 
 INTS = {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]}
 INT_LIST = {"type": "array", "items": {"type": "integer"}}
@@ -33,6 +36,13 @@ def registry():
     result.register_operator(name="increment", version="1", method=increment,
                              input_schema="ints", output_schema="ints")
     return result
+
+
+def run_cli(argv):
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = cli.main(argv)
+    return code, json.loads(out.getvalue())
 
 
 def flows():
@@ -117,13 +127,13 @@ class CliSystemTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             good = Path(tmp) / "good.json"
             good.write_text(json.dumps({"durability": "ephemeral"}), encoding="utf-8")
-            code, result = self._run(["policy-check", str(good)])
+            code, result = run_cli(["policy-check", str(good)])
             self.assertEqual(code, 0)
             self.assertTrue(result["policyChecked"])
             self.assertEqual(result["topLevelFields"], ["durability"])
             bad = Path(tmp) / "bad.json"
             bad.write_text(json.dumps({"unknown_field": 1}), encoding="utf-8")
-            code, result = self._run(["policy-check", str(bad)])
+            code, result = run_cli(["policy-check", str(bad)])
             self.assertEqual(code, 2)
             self.assertEqual(result["diagnostic"]["error_code"], "UNKNOWN_POLICY_FIELD")
 
@@ -134,19 +144,157 @@ class CliSystemTests(unittest.TestCase):
             project = root / "project.json"
             project.write_text(json.dumps({"modules": ["ops.py"], "flows": flows()}),
                                encoding="utf-8")
-            code, result = self._run(["schema", str(project), "ints", "--ephemeral"])
+            code, result = run_cli(["schema", str(project), "ints", "--ephemeral"])
             self.assertEqual(code, 0)
             self.assertEqual(result["definition"], INTS)
-            code, result = self._run(["schema", str(project), "absent", "--ephemeral"])
+            code, result = run_cli(["schema", str(project), "absent", "--ephemeral"])
             self.assertEqual(code, 2)
             self.assertEqual(result["diagnostic"]["error_code"], "UNKNOWN_SCHEMA")
-            code, result = self._run(["operators", str(project), "--ephemeral"])
+            code, result = run_cli(["operators", str(project), "--ephemeral"])
             self.assertEqual(code, 0)
             entry = result["operators"][0]
             self.assertEqual(entry["ref"], "increment@1")
             self.assertEqual(entry["staticReferences"], 3)
             self.assertEqual(entry["referencingFlows"], ["double", "main"])
             self.assertIn("defaultPolicy", entry)
+
+
+class ContextCommandTests(unittest.TestCase):
+    def _write_project(self, root: Path):
+        (root / "ops.py").write_text(MODULE, encoding="utf-8")
+        project = root / "project.json"
+        project.write_text(json.dumps({"modules": ["ops.py"], "flows": flows()}), encoding="utf-8")
+        return project
+
+    def test_context_reports_bounded_local_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = self._write_project(root)
+            tests = root / "tests"
+            tests.mkdir()
+            (tests / "test_ops.py").write_text("# references increment twice\n# increment again\n",
+                                                encoding="utf-8")
+            code, result = run_cli(["context", str(project), "increment@1", "--ephemeral"])
+            self.assertEqual(code, 0)
+            body = result["context"]
+            self.assertEqual(body["operator"]["ref"], "increment@1")
+            self.assertEqual(body["operator"]["inputSchema"], "ints")
+            self.assertEqual(body["flows"], ["double", "main"])
+            self.assertEqual(body["relatedTests"], [{"path": str(tests / "test_ops.py"), "matches": 2}])
+            self.assertTrue(body["boundaries"])
+            self.assertFalse(body["summary"]["truncated"])
+            self.assertEqual(body["upstreamFlows"], ["main"])
+            # Deterministic bytes for the same input.
+            code_again, result_again = run_cli(["context", str(project), "increment@1", "--ephemeral"])
+            self.assertEqual(json.dumps(result, sort_keys=True), json.dumps(result_again, sort_keys=True))
+
+    def test_context_notes_missing_test_directory_and_rejects_unknown_operator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = self._write_project(root)
+            code, result = run_cli(["context", str(project), "increment@1", "--ephemeral"])
+            self.assertEqual(code, 0)
+            self.assertTrue(result["context"]["notes"])
+            self.assertEqual(result["context"]["relatedTests"], [])
+            code, result = run_cli(["context", str(project), "absent@1", "--ephemeral"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "UNKNOWN_OPERATOR")
+
+    def test_context_budget_exceeded_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = self._write_project(root)
+            tests = root / "tests"
+            tests.mkdir()
+            for index in range(3):
+                (tests / f"t{index}.py").write_text("increment\n", encoding="utf-8")
+            code, result = run_cli(["context", str(project), "increment@1", "--ephemeral", "--budget", "2"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "CONTEXT_BUDGET_EXCEEDED")
+
+
+class ScaffoldCommandTests(unittest.TestCase):
+    def test_scaffold_operator_writes_candidates_and_the_test_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            into = Path(tmp) / "generated"
+            code, result = run_cli(["scaffold", "operator", "demo_op", "--into", str(into)])
+            self.assertEqual(code, 0)
+            self.assertEqual([f["kind"] for f in result["files"]], ["operator", "test"])
+            module = into / "demo_op_operator.py"
+            self.assertIn("def demo_op(", module.read_text(encoding="utf-8"))
+            # The generated contract test passes as written.
+            run = subprocess.run([sys.executable, "-m", "unittest", "test_demo_op_operator"],
+                                 cwd=into, capture_output=True, text=True, env=dict(os.environ))
+            self.assertEqual(run.returncode, 0, run.stderr)
+            # Deterministic regeneration into a fresh directory yields identical bytes.
+            fresh = Path(tmp) / "again"
+            code, _ = run_cli(["scaffold", "operator", "demo_op", "--into", str(fresh)])
+            for name in ("demo_op_operator.py", "test_demo_op_operator.py"):
+                self.assertEqual((into / name).read_bytes(), (fresh / name).read_bytes())
+
+    def test_scaffold_operator_never_overwrites_and_rejects_bad_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            into = Path(tmp) / "out"
+            run_cli(["scaffold", "operator", "demo_op", "--into", str(into)])
+            code, result = run_cli(["scaffold", "operator", "demo_op", "--into", str(into)])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "SCAFFOLD_TARGET_EXISTS")
+            code, result = run_cli(["scaffold", "operator", "bad name", "--into", str(Path(tmp) / "x")])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "INVALID_SCAFFOLD_ID")
+            code, result = run_cli(["scaffold", "operator", "ok", "--into", str(Path(tmp) / "y"),
+                                      "--proxy", "cache"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "INVALID_SCAFFOLD_ID")
+
+    def test_scaffold_operator_with_fallback_and_proxies_registers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            into = Path(tmp) / "out"
+            code, result = run_cli(["scaffold", "operator", "safe_op", "--into", str(into),
+                                      "--with-fallback", "--proxy", "metrix,log"])
+            self.assertEqual(code, 0)
+            text = (into / "safe_op_operator.py").read_text(encoding="utf-8")
+            self.assertIn("def safe_op_fallback(", text)
+            self.assertIn("def safe_op_metrix(", text)
+            self.assertIn("def safe_op_log(", text)
+            self.assertIn("fallback_capabilities=", text)
+            from microflow.registry import discover
+            registry = discover([into / "safe_op_operator.py"])
+            self.assertEqual(registry.operators["safe_op@1"].fallback is not None, True)
+
+    def test_scaffold_flow_emits_a_checkable_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run_cli(["scaffold", "operator", "demo_op", "--into", str(root)])
+            into = root / "flows"
+            code, result = run_cli(["scaffold", "flow", "demo_flow", "--into", str(into),
+                                      "--operator", "demo_op@1", "--input-schema", "demo_op_input",
+                                      "--output-schema", "demo_op_output",
+                                      "--module", "../demo_op_operator.py"])
+            self.assertEqual(code, 0)
+            project = json.loads((into / "demo_flow.flow.json").read_text(encoding="utf-8"))
+            self.assertEqual(project["flows"][0]["nodes"]["step"]["operator"], "demo_op@1")
+            self.assertEqual(project["modules"], ["../demo_op_operator.py"])
+            # The skeleton names a real operator and schemas; check reaches the
+            # flow-level mapping diagnostics instead of unknown references.
+            code, result = run_cli(["check", str(into / "demo_flow.flow.json"), "--ephemeral"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "UNKNOWN_SCHEMA_PATH")
+            # Missing schema names are rejected up front.
+            code, result = run_cli(["scaffold", "flow", "x", "--into", str(into),
+                                      "--operator", "demo_op@1", "--input-schema", "",
+                                      "--output-schema", "demo_op_output"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "UNKNOWN_SCHEMA")
+
+    def test_scaffold_rejects_the_ephemeral_flag_and_bad_operator_ref(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            into = Path(tmp) / "out"
+            code, result = run_cli(["scaffold", "flow", "demo", "--into", str(into),
+                                      "--operator", "demo_op", "--input-schema", "a",
+                                      "--output-schema", "b"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "INVALID_OPERATOR_ID")
 
 
 if __name__ == "__main__":

@@ -179,7 +179,7 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
             try:
                 await asyncio.wait_for(collecting.wait(), 1)
                 result = await runtime.wait(execution, timeout=.2)
-                self.assertEqual(result['output']['error']['code'], 'UNHANDLED_OPERATOR_EXCEPTION')
+                self.assertEqual(result['output']['error']['code'], 'CIRCUIT_BROKEN')
                 self.assertEqual(result['nodes']['second']['status'], 'SKIPPED')
                 self.assertNotIn('private password', str(result))
             finally:
@@ -369,7 +369,7 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
         commands, _ = self.make(slow_failure, definition=definition, clock=lambda: now[0])
         async with ScheduledRuntime(commands, poll_interval=.1) as runtime:
             state = await runtime.run('example', {'n': 1}, request_id='failure', timeout=2)
-        self.assertEqual(state['output']['error']['code'], 'UNHANDLED_OPERATOR_EXCEPTION')
+        self.assertEqual(state['output']['error']['code'], 'CIRCUIT_BROKEN')
 
     async def test_invalid_wait_budget_does_not_accept_business(self):
         commands, store = self.make()
