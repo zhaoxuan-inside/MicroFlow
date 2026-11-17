@@ -20,6 +20,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Badge, Button, cn } from "@microflow4kit/ui";
 import { inferNodeType, type GraphEdge, type GraphNode } from "./catalog";
+import { reaches, topoLayout } from "./graphLayout";
 
 const NODE_W = 190;
 const NODE_H = 86;
@@ -42,6 +43,12 @@ export interface EditorGraph {
   enable_saga_compensation?: boolean;
 }
 
+/** 节点执行态（来自最近一次 run 的 node_traces）：键为节点 id。 */
+export interface NodeExecution {
+  status: string;
+  duration_ms: number;
+}
+
 const typeBadgeTone: Record<string, "primary" | "warning" | "success" | "neutral"> = {
   GUARD: "warning",
   STORAGE: "success",
@@ -49,43 +56,12 @@ const typeBadgeTone: Record<string, "primary" | "warning" | "success" | "neutral
   BIZ: "neutral",
 };
 
-/** 拓扑分列布局（Kahn 入度 BFS），返回 nodeId → (col,row)。 */
-function topoLayout(nodes: GraphNode[], edges: GraphEdge[]): Map<string, { col: number; row: number }> {
-  const ids = nodes.map((n) => n.id);
-  const adjacency = new Map<string, string[]>(ids.map((id) => [id, []]));
-  const indegree = new Map<string, number>(ids.map((id) => [id, 0]));
-  for (const e of edges) {
-    if (!adjacency.has(e.from_node) || !indegree.has(e.to_node)) continue;
-    adjacency.get(e.from_node)!.push(e.to_node);
-    indegree.set(e.to_node, (indegree.get(e.to_node) || 0) + 1);
-  }
-  let frontier = ids.filter((id) => (indegree.get(id) || 0) === 0);
-  const colOf = new Map<string, number>();
-  let col = 0;
-  const visited = new Set<string>();
-  while (frontier.length) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      if (visited.has(id)) continue;
-      visited.add(id);
-      colOf.set(id, col);
-      for (const nxt of adjacency.get(id) || []) next.push(nxt);
-    }
-    frontier = next;
-    col += 1;
-  }
-  // 成环/不可达节点兜底排到末列，保证全部可见
-  for (const id of ids) if (!colOf.has(id)) colOf.set(id, col);
-  const rows = new Map<number, number>();
-  const result = new Map<string, { col: number; row: number }>();
-  for (const id of ids) {
-    const c = colOf.get(id) || 0;
-    const r = rows.get(c) || 0;
-    rows.set(c, r + 1);
-    result.set(id, { col: c, row: r });
-  }
-  return result;
-}
+const execDot: Record<string, string> = {
+  SUCCESS: "bg-success",
+  FAILED: "bg-destructive",
+  GUARD_REJECTED: "bg-warning",
+  SKIPPED: "bg-muted-foreground",
+};
 
 function nodeLabel(n: GraphNode, palette: PaletteItem[]): { title: string; sub: string } {
   const ref = n.kind === "SUBGRAPH" ? n.subgraph : n.operator;
@@ -101,12 +77,15 @@ export function GraphEditor({
   editable,
   allowSubgraphs,
   palette,
+  execution,
   onChange,
 }: {
   graph: EditorGraph;
   editable: boolean;
   allowSubgraphs: boolean;
   palette: PaletteItem[];
+  /** 最近一次执行的节点态：存在时节点内嵌状态点与时长 */
+  execution?: Record<string, NodeExecution>;
   onChange: (next: EditorGraph) => void;
 }) {
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -149,6 +128,13 @@ export function GraphEditor({
                   <Badge tone={typeBadgeTone[n.type] || "neutral"}>{n.type}</Badge>
                 </div>
                 <div className="truncate text-[10px] text-muted-foreground">{sub}</div>
+                {execution?.[n.id] ? (
+                  <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className={cn("size-1.5 rounded-full", execDot[execution[n.id].status] || "bg-muted-foreground")} />
+                    <span className="font-mono tabular-nums">{execution[n.id].duration_ms}ms</span>
+                    <span className="truncate">{execution[n.id].status}</span>
+                  </div>
+                ) : null}
                 <div className="mt-1 flex gap-1">
                   {graph.entry_node === n.id && <Badge tone="primary">入口</Badge>}
                   {graph.exit_node === n.id && <Badge tone="success">出口</Badge>}
@@ -159,7 +145,12 @@ export function GraphEditor({
           style: {
             width: NODE_W,
             height: NODE_H,
-            border: graph.entry_node === n.id || graph.exit_node === n.id ? "2px solid var(--color-primary, #6366f1)" : undefined,
+            border:
+              graph.entry_node === n.id || graph.exit_node === n.id
+                ? "2px solid var(--color-primary, #6366f1)"
+                : execution?.[n.id]?.status === "FAILED"
+                  ? "1.5px solid var(--color-destructive, #ef4444)"
+                  : undefined,
             borderRadius: 8,
             background: "var(--color-card, #fff)",
             color: "var(--color-card-foreground, #111)",
@@ -179,7 +170,7 @@ export function GraphEditor({
           }) satisfies Edge,
       ),
     );
-  }, [signature, graph, palette]);
+  }, [signature, graph, palette, execution]);
 
   const commit = useCallback(
     (mutate: (draft: EditorGraph) => EditorGraph) => {
@@ -229,25 +220,6 @@ export function GraphEditor({
     [commit, uniqueId],
   );
 
-  const reaches = useCallback((from: string, to: string, edgesList: GraphEdge[]): boolean => {
-    // DFS：from 是否可达 to（用于成环拒绝）
-    const adjacency = new Map<string, string[]>();
-    for (const e of edgesList) {
-      if (!adjacency.has(e.from_node)) adjacency.set(e.from_node, []);
-      adjacency.get(e.from_node)!.push(e.to_node);
-    }
-    const stack = [from];
-    const seen = new Set<string>();
-    while (stack.length) {
-      const cur = stack.pop()!;
-      if (cur === to) return true;
-      if (seen.has(cur)) continue;
-      seen.add(cur);
-      for (const nxt of adjacency.get(cur) || []) stack.push(nxt);
-    }
-    return false;
-  }, []);
-
   const onConnect = useCallback(
     (conn: Connection) =>
       commit((draft) => {
@@ -259,7 +231,7 @@ export function GraphEditor({
         draft.edges.push({ from_node: source, to_node: target });
         return draft;
       }),
-    [commit, reaches],
+    [commit],
   );
 
   const onNodesDelete = useCallback(
@@ -308,16 +280,17 @@ export function GraphEditor({
 
   const removeNode = useCallback(
     (id: string) => {
-      const fake: Node[] = [{ id, position: { x: 0, y: 0 } } as Node];
-      onNodesDelete(fake);
+      // 复用画布删除回调：按需构造仅含 id 的最小 Node 适配对象（非 Mock 数据）
+      const synthetic: Node[] = [{ id, position: { x: 0, y: 0 } } as Node];
+      onNodesDelete(synthetic);
     },
     [onNodesDelete],
   );
 
   const removeEdge = useCallback(
     (edge: GraphEdge) => {
-      const fake: Edge[] = [{ id: `${edge.from_node}=>${edge.to_node}`, source: edge.from_node, target: edge.to_node } as Edge];
-      onEdgesDelete(fake);
+      const synthetic: Edge[] = [{ id: `${edge.from_node}=>${edge.to_node}`, source: edge.from_node, target: edge.to_node } as Edge];
+      onEdgesDelete(synthetic);
     },
     [onEdgesDelete],
   );

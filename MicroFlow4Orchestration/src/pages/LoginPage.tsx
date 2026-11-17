@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { dispatch, setToken } from "@microflow4kit/api";
+import { orchDispatch, setOrchToken } from "../orchClient";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@microflow4kit/ui";
 
 export function LoginPage() {
@@ -15,11 +15,11 @@ export function LoginPage() {
     setBusy(true);
     setError("");
     try {
-      const data = await dispatch<{ token: string; must_change_password: boolean }>(
-        "auth.login",
+      const data = await orchDispatch<{ token: string }>(
+        "POST", "/auth/login",
         { email, password },
       );
-      setToken(data.token);
+      setOrchToken(data.token);
       navigate("/overview");
     } catch (err: any) {
       setError(err.message || "登录失败");
@@ -33,7 +33,7 @@ export function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-base">MicroFlow 编排管理平台</CardTitle>
-          <p className="text-xs text-muted-foreground">使用宿主平台账号登录</p>
+          <p className="text-xs text-muted-foreground">使用控制面账号登录（独立账号体系）</p>
         </CardHeader>
         <CardContent>
           <form className="space-y-3" onSubmit={submit}>

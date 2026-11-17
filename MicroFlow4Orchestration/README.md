@@ -7,4 +7,5 @@ MicroFlow 上层承载（根 README §三.4「汇聚、查询、看板、告警�
 ```bash
 npm install --no-bin-links
 node node_modules/vite/bin/vite.js build   # dev: 4601，/api 代理到宿主 3000
+npm test                                   # 纯逻辑测试（node:test，Node >= 22.7）
 ```

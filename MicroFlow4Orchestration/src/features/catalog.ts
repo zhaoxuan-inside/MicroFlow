@@ -1,10 +1,7 @@
-/** 编排目录契约：写操作信封、类型与共享工具。
+/** 编排目录契约：资产类型与共享纯工具（无网络依赖；网络统一走 orchClient）。
  *
- * 写操作统一 {action, payload} 双层信封（catalog_write_adapter 契约），
- * 由 OPC_ORCHESTRATION_CATALOG_PIPELINE 执行；读操作直连 catalog.* 场景。
+ * 节点/边/图结构由 GraphEditor 与 graphLayout 消费；工具函数供测试直接覆盖。
  */
-import { dispatch } from "@microflow4kit/api";
-
 export type AssetKind = "operator" | "subgraph" | "scenario";
 
 export interface AssetVersion {
@@ -55,24 +52,9 @@ export interface CatalogAsset {
   versions?: AssetVersion[];
   created_by?: string;
   project_id?: string;
-  lock_status?: AssetLockState | null;
   runtime_status?: string;
   referenced_by?: string[];
   in_use?: boolean;
-}
-
-export interface AssetLockState {
-  entity_type: string;
-  entity_key: string;
-  holder_id: string;
-  holder_name?: string;
-  expires_at?: string;
-}
-
-/** 目录写操作：锁由调用方持有，这里只负责信封。 */
-export async function catalogWrite<T = CatalogAsset>(action: string, payload: Record<string, unknown>) {
-  const route = `orchestration.${action}`;
-  return dispatch<T>(route, { action, payload });
 }
 
 export function assetId(asset: CatalogAsset): string {

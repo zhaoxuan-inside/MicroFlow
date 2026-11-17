@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@microflow4kit/api";
 import {
   Badge,
   Button,
-  PermissionGate,
+  ConfirmDialog,
   Card,
   CardContent,
   CardHeader,
@@ -12,112 +11,141 @@ import {
   EmptyState,
   Input,
   PageHeader,
+  Select,
   Spinner,
   cn,
 } from "@microflow4kit/ui";
 import { diffLines } from "@microflow4kit/ui";
+import { PermissionGate } from "../orchAuth";
+import { orchDispatch } from "../orchClient";
 
 interface VersionRow {
   version: string;
-  status: string;
   changelog?: string;
-  published_by?: string;
-  published_at?: string;
+  created_by?: string;
+  created_at?: string;
 }
 interface ScenarioDetail {
   code: string;
   current_version?: string;
   versions: VersionRow[];
+  deployments: Record<string, string[]>;
+}
+interface CurrentRow {
+  env: string;
+  version: string;
+  config_hash: string;
+  flow_digest: string;
+  updated_at: string;
+}
+interface ApprovalRow {
+  id: string;
+  asset_kind: string;
+  asset_code: string;
+  version: string;
+  env: string;
+  status: string;
+  note?: string;
+  requested_by: string;
+  approver?: string;
+  created_at?: string;
+  decided_at?: string;
+}
+interface DiffSide {
+  version: string;
+  graph: unknown;
+  config_hash: string;
+  flow_digest: string | null;
 }
 
-const statusTone: Record<string, "neutral" | "success" | "warning"> = {
-  PUBLISHED: "success",
-  DRAFT: "warning",
-  SUPERSEDED: "neutral",
-};
+const ENVS = ["dev", "test", "staging", "online"] as const;
+const APPROVAL_ENVS = ["staging", "online"] as const;
 
 export function ReleasesPage() {
   const qc = useQueryClient();
   const [code, setCode] = useState("");
   const [left, setLeft] = useState("");
   const [right, setRight] = useState("");
+  const [rollbackTo, setRollbackTo] = useState("");
+  const [rollbackEnv, setRollbackEnv] = useState<(typeof ENVS)[number]>("online");
+  const [approvalEnv, setApprovalEnv] = useState<(typeof APPROVAL_ENVS)[number]>("staging");
+  const [error, setError] = useState("");
 
   const scenarios = useQuery({
     queryKey: ["catalog-scenarios"],
     queryFn: () =>
-      dispatch<{ scenarios: Array<{ code: string; display_name?: string }> }>(
-        "orchestration.catalog.scenarios",
-        { page: 1, page_size: 200 },
-      ),
+      orchDispatch<{ scenarios: Array<{ code: string; display_name?: string }> }>(
+        "GET", `/scenarios?page=1&page_size=200`),
   });
 
   const detail = useQuery({
     queryKey: ["scenario-detail", code],
     enabled: !!code,
-    queryFn: () => dispatch<ScenarioDetail>("orchestration.catalog.scenario", { code }),
+    queryFn: () => orchDispatch<ScenarioDetail>("GET", `/scenarios/${encodeURIComponent(code)}`),
   });
 
-  const dagList = useQuery({
-    queryKey: ["dag-list", code],
+  const deployments = useQuery({
+    queryKey: ["scenario-deployments", code],
     enabled: !!code,
     queryFn: () =>
-      dispatch<{ configs: Array<{ version: string; status: string; topology_graph: unknown; compiled_hash: string }> }>(
-        "orchestration.dag.list",
-        { scenario_code: code },
-      ),
+      orchDispatch<{ deployments: Array<Record<string, unknown>>; current: Record<string, CurrentRow> }>(
+        "GET", `/scenarios/${encodeURIComponent(code)}/deployments`),
   });
 
   const approvals = useQuery({
     queryKey: ["release-approvals"],
-    queryFn: () =>
-      dispatch<{ approvals: Array<Record<string, string>> }>("orchestration.approvals.list", {}),
+    queryFn: () => orchDispatch<{ approvals: ApprovalRow[] }>("GET", "/approvals"),
   });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["scenario-detail", code] });
-    qc.invalidateQueries({ queryKey: ["dag-list", code] });
+    qc.invalidateQueries({ queryKey: ["scenario-deployments", code] });
     qc.invalidateQueries({ queryKey: ["release-approvals"] });
   };
 
-  const act = useMutation({
-    mutationFn: ({ scenario, payload }: { scenario: string; payload: Record<string, unknown> }) =>
-      dispatch(scenario, payload),
-    onSuccess: invalidate,
-  });
-  const actWithLock = useMutation({
-    mutationFn: async ({ scenario, payload }: { scenario: string; payload: Record<string, unknown> }) => {
-      await dispatch("orchestration.locks.acquire", { entity_type: "scenario", entity_key: code });
-      try {
-        return await dispatch(scenario, payload);
-      } finally {
-        await dispatch("orchestration.locks.release", { entity_type: "scenario", entity_key: code });
-      }
+  const run = useMutation({
+    mutationFn: async ({ method, path, payload }: { method: "POST"; path: string; payload?: Record<string, unknown> }) => {
+      const result = await orchDispatch<Record<string, unknown>>(method, path, payload);
+      invalidate();
+      return result;
     },
-    onSuccess: invalidate,
+    onError: (e) => setError((e as Error).message),
+    onSuccess: () => setError(""),
   });
 
   const versions = detail.data?.versions || [];
-  const configs = dagList.data?.configs || [];
-  const configOf = (v: string) => configs.find((c) => c.version === v);
+  const current = deployments.data?.current || {};
+  const currentEnvsOf = (version: string) =>
+    ENVS.filter((env) => current[env]?.version === version);
+  const deployedEnvsOf = (version: string) => detail.data?.deployments?.[version] || [];
+  const diffable = useMemo(
+    () => Array.from(new Set([...(detail.data?.deployments ? Object.keys(detail.data.deployments) : [])])),
+    [detail.data],
+  );
+
+  const diff = useQuery({
+    queryKey: ["scenario-diff", code, left, right],
+    enabled: !!code && !!left && !!right,
+    queryFn: () =>
+      orchDispatch<{ left: DiffSide; right: DiffSide }>(
+        "GET",
+        `/scenarios/${encodeURIComponent(code)}/version-diff?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`,
+      ),
+  });
 
   const diffRows = useMemo(() => {
-    if (!left || !right) return null;
-    const l = configOf(left);
-    const r = configOf(right);
-    if (!l?.topology_graph || !r?.topology_graph) return null;
+    if (!diff.data?.left?.graph || !diff.data?.right?.graph) return null;
     return diffLines(
-      JSON.stringify(l.topology_graph, null, 2),
-      JSON.stringify(r.topology_graph, null, 2),
+      JSON.stringify(diff.data.left.graph, null, 2),
+      JSON.stringify(diff.data.right.graph, null, 2),
     );
-  }, [left, right, dagList.data]);
-
-  const errMsg = (act.error || actWithLock.error) as { message?: string } | null;
+  }, [diff.data]);
 
   return (
     <div>
       <PageHeader
         title="版本与发布"
-        description="场景版本历史 / 部署 diff / 一键回滚 / 第二人发布审批"
+        description="场景版本历史 / 部署 diff / 回滚（每环境生效指针）/ 第二人发布审批"
       />
 
       <div className="mb-4 flex items-center gap-2">
@@ -137,9 +165,9 @@ export function ReleasesPage() {
         </datalist>
       </div>
 
-      {errMsg && (
+      {error && (
         <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {errMsg.message}
+          {error}
         </div>
       )}
 
@@ -150,57 +178,73 @@ export function ReleasesPage() {
               <CardTitle>版本历史 {detail.isPending && <Spinner className="ml-2" />}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {versions.map((v) => (
-                <div
-                  key={v.version}
-                  className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{v.version}</span>
-                      <Badge tone={statusTone[v.status] || "neutral"}>{v.status}</Badge>
-                      {detail.data?.current_version === v.version && (
-                        <Badge tone="primary">当前</Badge>
-                      )}
+              {versions.map((v) => {
+                const envs = deployedEnvsOf(v.version);
+                const active = currentEnvsOf(v.version);
+                return (
+                  <div
+                    key={v.version}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium font-mono">{v.version}</span>
+                        {envs.length > 0 && <Badge tone="success">已部署 {envs.join("/")}</Badge>}
+                        {active.map((env) => (
+                          <Badge key={env} tone="primary">{env} 生效中</Badge>
+                        ))}
+                        {detail.data?.current_version === v.version && (
+                          <Badge tone="neutral">最新草稿</Badge>
+                        )}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {v.changelog || "—"} {v.created_by ? `· ${v.created_by}` : ""}
+                      </div>
                     </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {v.changelog || "—"} {v.published_by ? `· ${v.published_by}` : ""}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <PermissionGate permission="orchestration:write">
-                      {v.status !== "PUBLISHED" && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <PermissionGate permission="orchestration:write">
+                        <Select
+                          className="h-8 w-28 text-xs"
+                          value={rollbackEnv}
+                          onChange={(e) => setRollbackEnv(e.target.value as (typeof ENVS)[number])}
+                          aria-label="回滚目标环境"
+                        >
+                          {ENVS.map((env) => <option key={env} value={env}>{env}</option>)}
+                        </Select>
                         <Button
                           variant="secondary"
-                          onClick={() =>
-                            actWithLock.mutate({
-                              scenario: "orchestration.scenarios.rollback",
-                              payload: { action: "scenarios.rollback", payload: { code, version: v.version } },
-                            })
-                          }
-                          disabled={actWithLock.isPending}
+                          onClick={() => setRollbackTo(v.version)}
+                          disabled={run.isPending}
                         >
                           回滚到此版本
                         </Button>
-                      )}
-                      {v.status === "DRAFT" && (
+                        <Select
+                          className="h-8 w-24 text-xs"
+                          value={approvalEnv}
+                          onChange={(e) => setApprovalEnv(e.target.value as (typeof APPROVAL_ENVS)[number])}
+                          aria-label="审批目标环境"
+                        >
+                          {APPROVAL_ENVS.map((env) => <option key={env} value={env}>{env}</option>)}
+                        </Select>
                         <Button
                           variant="secondary"
                           onClick={() =>
-                            act.mutate({
-                              scenario: "orchestration.approvals.request",
-                              payload: { action: "approvals.request", payload: { asset_kind: "scenario", code, version: v.version } },
+                            run.mutate({
+                              method: "POST",
+                              path: "/approvals/request",
+                              payload: { asset_kind: "scenario", asset_code: code,
+                                         version: v.version, env: approvalEnv },
                             })
                           }
-                          disabled={act.isPending}
+                          disabled={run.isPending}
                         >
                           提交发布审批
                         </Button>
-                      )}
-                    </PermissionGate>
+                      </PermissionGate>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {!detail.isPending && !versions.length && (
                 <EmptyState title="该场景没有版本记录" />
               )}
@@ -213,51 +257,60 @@ export function ReleasesPage() {
             </CardHeader>
             <CardContent>
               <div className="mb-3 flex items-center gap-2">
-                <select
-                  className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+                <Select
+                  className="h-9 w-44 text-sm"
                   value={left}
                   onChange={(e) => setLeft(e.target.value)}
+                  aria-label="选择 diff 左侧版本"
                 >
                   <option value="">左…</option>
-                  {configs.map((c) => (
-                    <option key={c.version} value={c.version}>
-                      {c.version}（{c.status}）
-                    </option>
+                  {diffable.map((v) => (
+                    <option key={v} value={v}>{v}</option>
                   ))}
-                </select>
+                </Select>
                 <span className="text-muted-foreground">→</span>
-                <select
-                  className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+                <Select
+                  className="h-9 w-44 text-sm"
                   value={right}
                   onChange={(e) => setRight(e.target.value)}
+                  aria-label="选择 diff 右侧版本"
                 >
                   <option value="">右…</option>
-                  {configs.map((c) => (
-                    <option key={c.version} value={c.version}>
-                      {c.version}（{c.status}）
-                    </option>
+                  {diffable.map((v) => (
+                    <option key={v} value={v}>{v}</option>
                   ))}
-                </select>
+                </Select>
               </div>
-              {diffRows ? (
-                <div className="max-h-96 overflow-auto rounded-md border border-border font-mono text-xs">
-                  {diffRows.map((row, idx) => (
-                    <div
-                      key={idx}
-                      className={cn(
-                        "grid grid-cols-2 gap-px",
-                        row.kind === "added" && "bg-success/8",
-                        row.kind === "removed" && "bg-destructive/8",
-                      )}
-                    >
-                      <pre className={cn("px-2 py-0.5", row.kind === "removed" && "text-destructive")}>
-                        {row.left || ""}
-                      </pre>
-                      <pre className={cn("px-2 py-0.5", row.kind === "added" && "text-success")}>
-                        {row.right || ""}
-                      </pre>
-                    </div>
-                  ))}
+              {diff.isPending && (left && right) ? (
+                <Spinner />
+              ) : diffRows ? (
+                <div>
+                  <div className="mb-2 text-xs text-muted-foreground">
+                    左 config_hash <code className="font-mono">{diff.data?.left.config_hash.slice(0, 12)}…</code>
+                    · 右 <code className="font-mono">{diff.data?.right.config_hash.slice(0, 12)}…</code>
+                    {diff.data?.right.flow_digest ? (
+                      <> · flow_digest <code className="font-mono">{diff.data.right.flow_digest.slice(0, 12)}…</code></>
+                    ) : null}
+                  </div>
+                  <div className="max-h-96 overflow-auto rounded-md border border-border font-mono text-xs">
+                    {diffRows.map((row, idx) => (
+                      <div
+                        key={idx}
+                        className={cn(
+                          "grid grid-cols-2 gap-px",
+                          row.kind === "added" && "bg-success/8",
+                          row.kind === "removed" && "bg-destructive/8",
+                        )}
+                      >
+                        <pre className={cn("px-2 py-0.5", row.kind === "removed" && "text-destructive")}>
+                          {row.left || ""}
+                        </pre>
+                        <pre className={cn("px-2 py-0.5", row.kind === "added" && "text-success")}>
+                          {row.right || ""}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <EmptyState title="选择左右两个版本查看部署差异" />
@@ -269,13 +322,13 @@ export function ReleasesPage() {
 
       <Card className="mt-4">
         <CardHeader>
-          <CardTitle>发布审批（第二人确认制）</CardTitle>
+          <CardTitle>发布审批（第二人确认制 · staging/online）</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {approvals.isPending ? (
             <Spinner />
           ) : !approvals.data?.approvals?.length ? (
-            <EmptyState title="暂无审批单" hint="在版本历史里对草稿版本提交发布审批" />
+            <EmptyState title="暂无审批单" hint="在版本历史里对版本提交发布审批" />
           ) : (
             approvals.data.approvals.map((a) => (
               <div
@@ -283,11 +336,11 @@ export function ReleasesPage() {
                 className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-3 py-2"
               >
                 <div className="min-w-0 text-sm">
-                  <span className="font-medium">
-                    {a.asset_kind} {a.code}@{a.version}
+                  <span className="font-medium font-mono">
+                    {a.asset_kind} {a.asset_code}@{a.version} → {a.env}
                   </span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    发起 {a.requested_by} · {a.requested_at?.slice(0, 19).replace("T", " ")}
+                  <span className="ml-2 text-xs tabular-nums text-muted-foreground">
+                    发起 {a.requested_by} · {a.created_at?.slice(0, 19).replace("T", " ")}
                   </span>
                   {a.note && <div className="truncate text-xs text-muted-foreground">{a.note}</div>}
                 </div>
@@ -308,20 +361,16 @@ export function ReleasesPage() {
                       <Button
                         variant="secondary"
                         onClick={() =>
-                          act.mutate({
-                            scenario: "orchestration.approvals.reject",
-                            payload: { action: "approvals.reject", payload: { approval_id: a.id, note: "驳回" } },
-                          })
+                          run.mutate({ method: "POST", path: "/approvals/decide",
+                                       payload: { approval_id: a.id, decision: "reject" } })
                         }
                       >
                         驳回
                       </Button>
                       <Button
                         onClick={() =>
-                          act.mutate({
-                            scenario: "orchestration.approvals.approve",
-                            payload: { action: "approvals.approve", payload: { approval_id: a.id } },
-                          })
+                          run.mutate({ method: "POST", path: "/approvals/decide",
+                                       payload: { approval_id: a.id, decision: "approve" } })
                         }
                       >
                         通过并执行
@@ -334,6 +383,22 @@ export function ReleasesPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={rollbackTo !== ""}
+        title="回滚发布版本"
+        description={`确认将「${code}」的 ${rollbackEnv} 环境回滚到版本 ${rollbackTo}？该环境生效指针立即切换，新执行按回滚后版本装载（阶段守卫与 E2E 门禁照常生效）。`}
+        confirmLabel="确认回滚"
+        onConfirm={() => {
+          run.mutate({
+            method: "POST",
+            path: `/scenarios/${encodeURIComponent(code)}/rollback`,
+            payload: { version: rollbackTo, env: rollbackEnv },
+          });
+          setRollbackTo("");
+        }}
+        onCancel={() => setRollbackTo("")}
+      />
     </div>
   );
 }

@@ -1,29 +1,13 @@
 /** 实验管理（A/B）：创建（变体+权重+流量）→ 状态机（启动/停止/归档）→ 分流试算 → 读出。
  *
- * 分流/上报走 OPC_EXPERIMENT_PIPELINE（{action,payload} 信封）；读直连。
- * 模型借鉴 GrowthBook，代码自研。
+ * 全部走控制面 REST（orchClient :8200）；分桶 sha256(key:uid) 确定性，
+ * 分派记录持久化在控制面（粘性分配），读出为真实分派分布。
  */
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { dispatch } from "@microflow4kit/api";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  EmptyState,
-  Field,
-  Input,
-  Modal,
-  ModalActions,
-  PageHeader,
-  PermissionGate,
-  Spinner,
-  useScope,
-  useToast,
-} from "@microflow4kit/ui";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Field, Input, Modal, ModalActions, PageHeader, Select, Spinner, useToast } from "@microflow4kit/ui";
+import { PermissionGate, useScope } from "../orchAuth";
+import { orchDispatch } from "../orchClient";
 
 const statusTone: Record<string, "neutral" | "success" | "warning" | "destructive" | "primary"> = {
   DRAFT: "warning",
@@ -34,27 +18,28 @@ const statusTone: Record<string, "neutral" | "success" | "warning" | "destructiv
 
 interface Variant {
   key: string;
-  name?: string;
   weight: number;
 }
 
 interface Experiment {
   key: string;
-  name: string;
+  display_name: string;
   description: string;
   status: string;
-  variants: Variant[];
   traffic_percent: number;
+  variants: Variant[];
+  env_key: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Readout {
-  total_assignments: number;
-  variants: Array<{
-    variant: string;
-    name: string;
-    assignments: number;
-    metrics: Record<string, { count: number; sum: number; avg?: number }>;
-  }>;
+  key: string;
+  status: string;
+  total: number;
+  variants: Array<{ variant: string; assigned: number; share: number }>;
+  note: string;
 }
 
 export function ExperimentsPage() {
@@ -65,31 +50,46 @@ export function ExperimentsPage() {
 
   const list = useQuery({
     queryKey: ["experiments"],
-    queryFn: () => dispatch<{ experiments: Experiment[]; total: number }>("experiment.list", {}),
+    queryFn: () => orchDispatch<{ experiments: Experiment[] }>("GET", "/experiments"),
   });
   const [selected, setSelected] = useState("");
   const [creating, setCreating] = useState(false);
 
   const detail = useQuery({
     queryKey: ["experiment", selected],
-    queryFn: () => dispatch<Experiment>("experiment.detail", { experiment_key: selected }),
+    queryFn: () => orchDispatch<Experiment>("GET", `/experiments/${encodeURIComponent(selected)}`),
     enabled: Boolean(selected),
   });
   const readout = useQuery({
     queryKey: ["experiment-readout", selected],
-    queryFn: () => dispatch<Readout>("experiment.readout", { experiment_key: selected }),
+    queryFn: () => orchDispatch<Readout>("GET", `/experiments/${encodeURIComponent(selected)}/readout`),
     enabled: Boolean(selected),
   });
 
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["experiments"] });
+    qc.invalidateQueries({ queryKey: ["experiment"] });
+    qc.invalidateQueries({ queryKey: ["experiment-readout"] });
+  };
+
   const setStatus = async (key: string, status: string) => {
     try {
-      await dispatch(`experiment.status`, { action: "experiments.status", payload: { experiment_key: key, status } });
+      await orchDispatch("POST", `/experiments/${encodeURIComponent(key)}/status`, { status });
       toast({ title: `实验已${status === "RUNNING" ? "启动" : status === "STOPPED" ? "停止" : "归档"}`, tone: "success" });
-      qc.invalidateQueries({ queryKey: ["experiments"] });
-      qc.invalidateQueries({ queryKey: ["experiment"] });
-      qc.invalidateQueries({ queryKey: ["experiment-readout"] });
+      invalidateAll();
     } catch (err) {
       toast({ title: "状态变更失败", description: err instanceof Error ? err.message : String(err), tone: "destructive" });
+    }
+  };
+
+  const remove = async (key: string) => {
+    try {
+      await orchDispatch("DELETE", `/experiments/${encodeURIComponent(key)}`);
+      toast({ title: "实验已删除", tone: "success" });
+      if (selected === key) setSelected("");
+      invalidateAll();
+    } catch (err) {
+      toast({ title: "删除失败", description: err instanceof Error ? err.message : String(err), tone: "destructive" });
     }
   };
 
@@ -119,28 +119,28 @@ export function ExperimentsPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-5 py-3 font-medium">实验</th>
-                <th className="px-5 py-3 font-medium">状态</th>
-                <th className="px-5 py-3 font-medium">流量</th>
-                <th className="px-5 py-3 font-medium">变体</th>
-                <th className="px-5 py-3 font-medium">操作</th>
+              <tr className="border-b border-border bg-muted/50 text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium font-mono uppercase">实验</th>
+                <th className="px-5 py-3 font-medium font-mono uppercase">状态</th>
+                <th className="px-5 py-3 font-medium font-mono uppercase">流量</th>
+                <th className="px-5 py-3 font-medium font-mono uppercase">变体</th>
+                <th className="px-5 py-3 font-medium font-mono uppercase">操作</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((e) => (
                 <tr key={e.key} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
                   <td className="px-5 py-3">
-                    <div className="font-medium">{e.name}</div>
+                    <div className="font-medium">{e.display_name}</div>
                     <div className="text-xs text-muted-foreground">{e.key}{e.description ? ` · ${e.description}` : ""}</div>
                   </td>
                   <td className="px-5 py-3"><Badge tone={statusTone[e.status] || "neutral"}>{e.status}</Badge></td>
-                  <td className="px-5 py-3 text-muted-foreground">{e.traffic_percent}%</td>
+                  <td className="px-5 py-3 tabular-nums text-muted-foreground">{e.traffic_percent}%</td>
                   <td className="px-5 py-3 text-muted-foreground">
                     {e.variants.map((v) => `${v.key}(${v.weight})`).join(" / ")}
                   </td>
                   <td className="px-5 py-3">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button variant="secondary" className="h-7 text-xs" onClick={() => setSelected(e.key)}>
                         详情
                       </Button>
@@ -165,6 +165,11 @@ export function ExperimentsPage() {
                             </Button>
                           </>
                         )}
+                        {e.status !== "RUNNING" && (
+                          <Button variant="ghost" className="h-7 text-xs text-destructive" onClick={() => remove(e.key)}>
+                            删除
+                          </Button>
+                        )}
                       </PermissionGate>
                     </div>
                   </td>
@@ -180,11 +185,7 @@ export function ExperimentsPage() {
           experiment={detail.data}
           readout={readout.data}
           canManage={canManage}
-          onChanged={() => {
-            qc.invalidateQueries({ queryKey: ["experiments"] });
-            qc.invalidateQueries({ queryKey: ["experiment"] });
-            qc.invalidateQueries({ queryKey: ["experiment-readout"] });
-          }}
+          onChanged={invalidateAll}
           onClose={() => setSelected("")}
         />
       )}
@@ -225,17 +226,17 @@ function ExperimentDetail({
   const [saving, setSaving] = useState(false);
 
   const totalWeight = experiment.variants.reduce((s, v) => s + (weights[v.key] ?? v.weight), 0) || 1;
+  // 运行中实验不可改变体集合（后端强制）：只允许调流量门控
+  const variantsLocked = experiment.status === "RUNNING";
 
   const saveTuning = async () => {
     setSaving(true);
     try {
-      await dispatch("experiment.update", {
-        action: "experiments.update",
-        payload: {
-          experiment_key: experiment.key,
-          traffic_percent: traffic,
-          variants: experiment.variants.map((v) => ({ ...v, weight: weights[v.key] ?? v.weight })),
-        },
+      await orchDispatch("POST", `/experiments/${encodeURIComponent(experiment.key)}/update`, {
+        traffic_percent: traffic,
+        ...(variantsLocked ? {} : {
+          variants: experiment.variants.map((v) => ({ key: v.key, weight: weights[v.key] ?? v.weight })),
+        }),
       });
       toast({ title: "变体权重与流量已更新", tone: "success" });
       onChanged();
@@ -248,9 +249,10 @@ function ExperimentDetail({
 
   const tryAssign = async () => {
     try {
-      const res = await dispatch<{ variant: string; in_experiment: boolean; reason?: string }>(
-        "experiment.assign",
-        { experiment_key: experiment.key, user_id: tryUid },
+      const res = await orchDispatch<{ variant: string; in_experiment: boolean; reason?: string }>(
+        "POST",
+        `/experiments/${encodeURIComponent(experiment.key)}/assign`,
+        { uid: tryUid },
       );
       setTryResult(res);
     } catch (err) {
@@ -263,7 +265,7 @@ function ExperimentDetail({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">{experiment.name}</CardTitle>
+            <CardTitle className="text-base">{experiment.display_name}</CardTitle>
             <div className="flex items-center gap-2">
               <Badge tone={statusTone[experiment.status] || "neutral"}>{experiment.status}</Badge>
               <Button variant="secondary" className="h-7 text-xs" onClick={onClose}>收起</Button>
@@ -271,13 +273,14 @@ function ExperimentDetail({
           </div>
           <p className="text-xs text-muted-foreground">
             {experiment.key}{experiment.description ? ` · ${experiment.description}` : ""}
+            {experiment.env_key ? ` · 生效环境 ${experiment.env_key}` : " · 全环境"}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <PermissionGate permission="experiment:manage">
             <div className="space-y-2 rounded-md border border-border p-3">
               <div className="text-xs font-medium text-muted-foreground">
-                变体权重与流量{experiment.status === "RUNNING" ? "（运行中可调）" : ""}
+                变体权重与流量{variantsLocked ? "（运行中：变体锁定，只可调流量）" : ""}
               </div>
               {experiment.variants.map((v) => (
                 <div key={v.key} className="flex items-center gap-3">
@@ -287,6 +290,7 @@ function ExperimentDetail({
                     min={0}
                     step="0.1"
                     className="h-8 w-28 text-xs"
+                    disabled={variantsLocked}
                     value={weights[v.key] ?? v.weight}
                     onChange={(e) => setWeights({ ...weights, [v.key]: Number(e.target.value) })}
                   />
@@ -306,7 +310,7 @@ function ExperimentDetail({
                   onChange={(e) => setTraffic(Number(e.target.value))}
                 />
                 <span className="text-xs text-muted-foreground">%</span>
-                <Button className="h-8 text-xs" disabled={saving} onClick={saveTuning}>
+                <Button className="h-8 text-xs" disabled={saving || !canManage} onClick={saveTuning}>
                   {saving ? "保存中…" : "保存调优"}
                 </Button>
               </div>
@@ -343,7 +347,7 @@ function ExperimentDetail({
         <CardHeader>
           <CardTitle>读出</CardTitle>
           <p className="text-xs text-muted-foreground">
-            累计分配 {readout?.total_assignments ?? 0} 人；结果指标由宿主客户端经 outcome.report 上报
+            累计分配 {readout?.total ?? 0} 人；{readout?.note || "结果指标由宿主客户端经 outcome 上报后接入"}
           </p>
         </CardHeader>
         <CardContent>
@@ -352,28 +356,18 @@ function ExperimentDetail({
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="py-2 font-medium">变体</th>
-                  <th className="py-2 font-medium">分配数</th>
-                  <th className="py-2 font-medium">占比</th>
-                  <th className="py-2 font-medium">结果指标</th>
+                <tr className="border-b border-border bg-muted/50 text-left text-xs text-muted-foreground">
+                  <th className="py-2 font-medium font-mono uppercase">变体</th>
+                  <th className="py-2 font-medium font-mono uppercase">分配数</th>
+                  <th className="py-2 font-medium font-mono uppercase">占比</th>
                 </tr>
               </thead>
               <tbody>
                 {readout.variants.map((v) => (
                   <tr key={v.variant} className="border-b border-border/50 last:border-0">
                     <td className="py-2 font-medium">{v.variant}</td>
-                    <td className="py-2">{v.assignments}</td>
-                    <td className="py-2 text-muted-foreground">
-                      {readout.total_assignments ? Math.round((v.assignments / readout.total_assignments) * 100) : 0}%
-                    </td>
-                    <td className="py-2 text-xs text-muted-foreground">
-                      {Object.entries(v.metrics).length
-                        ? Object.entries(v.metrics)
-                            .map(([m, s]) => `${m}: n=${s.count} avg=${s.avg ?? 0}`)
-                            .join(" · ")
-                        : "—"}
-                    </td>
+                    <td className="py-2">{v.assigned}</td>
+                    <td className="py-2 text-muted-foreground">{Math.round((v.share ?? 0) * 100)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -396,19 +390,23 @@ function CreateExperimentModal({
 }) {
   const { toast } = useToast();
   const { activeEnvironments } = useScope();
-  const [form, setForm] = useState({ key: "", name: "", description: "", traffic_percent: 100, env_key: "" });
+  const [form, setForm] = useState({ key: "", display_name: "", description: "", traffic_percent: 100, env_key: "" });
   const [variants, setVariants] = useState<Variant[]>([
-    { key: "control", name: "对照组", weight: 1 },
-    { key: "treatment", name: "实验组", weight: 1 },
+    { key: "control", weight: 1 },
+    { key: "treatment", weight: 1 },
   ]);
   const [busy, setBusy] = useState(false);
 
   const create = async () => {
     setBusy(true);
     try {
-      await dispatch("experiment.create", {
-        action: "experiments.create",
-        payload: { ...form, variants },
+      await orchDispatch("POST", "/experiments/create", {
+        key: form.key,
+        display_name: form.display_name || form.key,
+        description: form.description,
+        variants,
+        traffic_percent: form.traffic_percent,
+        env_key: form.env_key,
       });
       toast({ title: "实验已创建（草稿）", description: "启动后对宿主客户端生效", tone: "success" });
       onCreated(form.key);
@@ -438,7 +436,7 @@ function CreateExperimentModal({
           <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} placeholder="cta_color" />
         </Field>
         <Field label="名称">
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
         </Field>
         <Field label="描述">
           <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -449,16 +447,10 @@ function CreateExperimentModal({
             {variants.map((v, i) => (
               <div key={i} className="flex items-center gap-2">
                 <Input
-                  className="h-8 w-32 text-xs"
+                  className="h-8 w-40 text-xs"
                   placeholder="变体键"
                   value={v.key}
                   onChange={(e) => setVariants(variants.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))}
-                />
-                <Input
-                  className="h-8 w-32 text-xs"
-                  placeholder="名称"
-                  value={v.name}
-                  onChange={(e) => setVariants(variants.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
                 />
                 <Input
                   type="number"
@@ -477,7 +469,7 @@ function CreateExperimentModal({
             ))}
           </div>
           <Button variant="secondary" className="mt-2 h-7 text-xs"
-            onClick={() => setVariants([...variants, { key: `variant_${variants.length + 1}`, name: "", weight: 1 }])}>
+            onClick={() => setVariants([...variants, { key: `variant_${variants.length + 1}`, weight: 1 }])}>
             添加变体
           </Button>
         </div>
@@ -485,18 +477,18 @@ function CreateExperimentModal({
           <Input type="number" min={0} max={100} value={form.traffic_percent}
             onChange={(e) => setForm({ ...form, traffic_percent: Number(e.target.value) })} />
         </Field>
-        <Field label="生效环境" hint="留空 = 全环境生效；指定环境后宿主仅在匹配环境分流">
-          <select
+        <Field label="生效环境" hint="宿主仅在匹配环境分流；留空由控制面按默认环境登记">
+          <Select
             aria-label="选择生效环境"
-            className="h-9 rounded-md border border-input bg-card px-2.5 text-sm"
+            className="h-9 text-sm"
             value={form.env_key}
             onChange={(e) => setForm({ ...form, env_key: e.target.value })}
           >
-            <option value="">全环境</option>
+            <option value="">默认（dev）</option>
             {activeEnvironments.map((env) => (
               <option key={env.key} value={env.key}>{env.name}{env.protected ? " 🔒" : ""}</option>
             ))}
-          </select>
+          </Select>
         </Field>
       </div>
     </Modal>
