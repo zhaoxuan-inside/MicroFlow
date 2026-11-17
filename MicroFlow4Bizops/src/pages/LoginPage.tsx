@@ -32,10 +32,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      {/* 品牌 Logo 固定在页面左上角（登录卡片只承载表单） */}
+      <div className="absolute left-6 top-6">
+        <Logo product={t("shell.product")} />
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <Logo size="lg" product={t("shell.product")} />
           <p className="text-xs text-muted-foreground">{t("login.subtitle")}</p>
         </CardHeader>
         <CardContent>

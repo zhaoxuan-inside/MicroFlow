@@ -29,10 +29,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      {/* 品牌 Logo 固定在页面左上角（登录卡片只承载表单） */}
+      <div className="absolute left-6 top-6">
+        <Logo product="编排管理平台" />
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <Logo size="lg" product="编排管理平台" />
           <p className="text-xs text-muted-foreground">使用控制面账号登录（独立账号体系）</p>
         </CardHeader>
         <CardContent>
