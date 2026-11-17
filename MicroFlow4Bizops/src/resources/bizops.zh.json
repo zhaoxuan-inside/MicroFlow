@@ -1,6 +1,7 @@
 {
   "shell": {
     "title": "MicroFlow 运营平台",
+    "product": "运营平台",
     "platformSection": "平台管理",
     "logout": "退出",
     "themeAria": "切换主题",

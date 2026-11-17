@@ -1,6 +1,7 @@
 {
   "shell": {
     "title": "MicroFlow Bizops Console",
+    "product": "Bizops",
     "platformSection": "Platform administration",
     "logout": "Sign out",
     "themeAria": "Toggle theme",

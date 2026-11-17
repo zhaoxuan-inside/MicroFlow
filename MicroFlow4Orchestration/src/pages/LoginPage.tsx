@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { orchDispatch, setOrchToken } from "../orchClient";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@microflow4kit/ui";
+import { Button, Card, CardContent, CardHeader, Input, Logo } from "@microflow4kit/ui";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -32,7 +32,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-base">MicroFlow 编排管理平台</CardTitle>
+          <Logo size="lg" product="编排管理平台" />
           <p className="text-xs text-muted-foreground">使用控制面账号登录（独立账号体系）</p>
         </CardHeader>
         <CardContent>

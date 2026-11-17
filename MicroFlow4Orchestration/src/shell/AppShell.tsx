@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { useScope } from "../orchAuth";
+import { Logo } from "@microflow4kit/ui";
 import { orchDispatch, getOrchToken, clearOrchToken } from "../orchClient";
 import { Button, CommandPalette, useTheme, type CommandEntry } from "@microflow4kit/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -78,7 +79,7 @@ export function AppShell() {
     <div className="flex min-h-screen">
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
         <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-          <span className="text-sm font-semibold tracking-tight">MicroFlow 编排管理</span>
+          <Logo product="编排管理" />
         </div>
         <nav className="flex-1 space-y-0.5 p-3">
           {NAV.map((item) => (

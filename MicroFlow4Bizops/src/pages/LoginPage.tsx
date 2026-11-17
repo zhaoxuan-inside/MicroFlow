@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { dispatch, setToken } from "@microflow4kit/api";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@microflow4kit/ui";
+import { Button, Card, CardContent, CardHeader, Input } from "@microflow4kit/ui";
+import { Logo } from "@microflow4kit/ui";
 
 export function LoginPage() {
   const { t } = useTranslation("bizops");
@@ -34,7 +35,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-base">{t("shell.title")}</CardTitle>
+          <Logo size="lg" product={t("shell.product")} />
           <p className="text-xs text-muted-foreground">{t("login.subtitle")}</p>
         </CardHeader>
         <CardContent>

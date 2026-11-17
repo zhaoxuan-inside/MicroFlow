@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { clearScope, clearToken, getToken, dispatch } from "@microflow4kit/api";
 import { Button, CommandPalette, LocaleSwitcher, PermissionGate, ScopeEmptyHint, ScopeSwitcher, useTheme, useScope, type CommandEntry } from "@microflow4kit/ui";
+import { Logo } from "@microflow4kit/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -55,7 +56,7 @@ export function AppShell() {
     <div className="flex min-h-screen">
       <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
         <div className="flex h-14 items-center gap-2 border-b border-border px-5">
-          <span className="text-sm font-semibold tracking-tight">{t("shell.title")}</span>
+          <Logo product={t("shell.product")} />
         </div>
         <nav className="flex-1 space-y-0.5 p-3">
           {NAV.map((item) => (
