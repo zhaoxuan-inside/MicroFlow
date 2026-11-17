@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dispatch } from "@microflow4kit/api";
 import { PermissionGate } from "@microflow4kit/ui";
-import { Card, EmptyState, Input, PageHeader, Select, Spinner } from "@microflow4kit/ui";
+import { Badge, Card, EmptyState, Input, PageHeader, Select, Spinner } from "@microflow4kit/ui";
 
 interface AuditRow {
   id?: string;
@@ -57,26 +57,34 @@ export function AuditPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2.5 font-medium">时间</th>
-                  <th className="px-4 py-2.5 font-medium">动作</th>
-                  <th className="px-4 py-2.5 font-medium">操作者</th>
-                  <th className="px-4 py-2.5 font-medium">结果</th>
-                  <th className="px-4 py-2.5 font-medium">来源 IP</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">时间</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">动作</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">操作者</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">结果</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">来源 IP</th>
                 </tr>
               </thead>
               <tbody>
                 {list.data.logs.map((row, idx) => (
                   <tr key={row.id || idx} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground">{row.created_at?.slice(0, 19).replace("T", " ")}</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums text-muted-foreground">{row.created_at?.slice(0, 19).replace("T", " ")}</td>
                     <td className="px-4 py-2.5">
-                      <div className="font-medium">{row.action}</div>
+                      <div className="font-medium font-mono">{row.action}</div>
                       {row.permission && <div className="text-xs text-muted-foreground">{row.permission}</div>}
                     </td>
                     <td className="px-4 py-2.5 text-xs">
                       {row.actor_id || "—"}
                       {row.actor_role ? ` · ${row.actor_role}` : ""}
                     </td>
-                    <td className="px-4 py-2.5 text-xs">{row.result || "—"}</td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {row.result === "SUCCESS" ? (
+                        <Badge tone="success">SUCCESS</Badge>
+                      ) : row.result ? (
+                        <Badge tone="destructive">{row.result}</Badge>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">{row.ip_address || "—"}</td>
                   </tr>
                 ))}

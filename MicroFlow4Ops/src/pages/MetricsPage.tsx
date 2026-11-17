@@ -54,19 +54,19 @@ export function MetricsPage() {
               <Card>
                 <CardHeader><CardTitle className="text-muted-foreground">总调用</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-semibold tracking-tight">{rows.reduce((s, r) => s + r.count, 0)}</div>
+                  <div className="text-3xl font-semibold tracking-tight tabular-nums">{rows.reduce((s, r) => s + r.count, 0)}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader><CardTitle className="text-muted-foreground">总错误</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-semibold tracking-tight">{rows.reduce((s, r) => s + r.errors, 0)}</div>
+                  <div className="text-3xl font-semibold tracking-tight tabular-nums">{rows.reduce((s, r) => s + r.errors, 0)}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader><CardTitle className="text-muted-foreground">最慢 P95</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-semibold tracking-tight">
+                  <div className="text-3xl font-semibold tracking-tight tabular-nums">
                     {Math.max(...rows.map((r) => r.p95_ms))}ms
                   </div>
                 </CardContent>
@@ -95,21 +95,21 @@ export function MetricsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="px-4 py-2.5 font-medium">场景</th>
-                    <th className="px-4 py-2.5 font-medium">调用量</th>
-                    <th className="px-4 py-2.5 font-medium">错误率</th>
-                    <th className="px-4 py-2.5 font-medium">平均</th>
-                    <th className="px-4 py-2.5 font-medium">P95</th>
+                    <th className="px-4 py-2.5 font-medium font-mono uppercase">场景</th>
+                    <th className="px-4 py-2.5 font-medium font-mono uppercase">调用量</th>
+                    <th className="px-4 py-2.5 font-medium font-mono uppercase">错误率</th>
+                    <th className="px-4 py-2.5 font-medium font-mono uppercase">平均</th>
+                    <th className="px-4 py-2.5 font-medium font-mono uppercase">P95</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.scenario_code} className="border-b border-border/60 last:border-0">
                       <td className="px-4 py-2.5 text-xs font-medium">{r.scenario_code}</td>
-                      <td className="px-4 py-2.5">{r.count}</td>
-                      <td className="px-4 py-2.5">{(r.error_rate * 100).toFixed(1)}%</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.avg_ms}ms</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.p95_ms}ms</td>
+                      <td className="px-4 py-2.5 tabular-nums">{r.count}</td>
+                      <td className="px-4 py-2.5 tabular-nums">{(r.error_rate * 100).toFixed(1)}%</td>
+                      <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.avg_ms}ms</td>
+                      <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.p95_ms}ms</td>
                     </tr>
                   ))}
                 </tbody>

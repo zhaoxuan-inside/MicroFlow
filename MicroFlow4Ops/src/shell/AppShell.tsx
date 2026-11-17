@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { clearToken, getToken, dispatch } from "@microflow4kit/api";
-import { Button, PermissionGate, ScopeEmptyHint, ScopeSwitcher, useTheme, useScope } from "@microflow4kit/ui";
+import { clearScope, clearToken, getToken, dispatch } from "@microflow4kit/api";
+import { Button, CommandPalette, PermissionGate, ScopeEmptyHint, ScopeSwitcher, useTheme, useScope, type CommandEntry } from "@microflow4kit/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
@@ -10,6 +10,7 @@ const NAV = [
   { to: "/metrics", label: "指标看板", icon: "◫" },
   { to: "/audit", label: "审计与日志", icon: "▤" },
   { to: "/debug", label: "调试工作台", icon: "⚗" },
+  { to: "/alerts", label: "告警中心", icon: "⚠" },
 ];
 
 const PLATFORM_NAV = [
@@ -40,6 +41,13 @@ export function AppShell() {
       navigate("/login");
     }
   }, [session.isError, navigate]);
+
+  const entries: CommandEntry[] = [
+    ...NAV.map((item) => ({ id: item.to, label: item.label, group: "导航", icon: item.icon, onSelect: () => navigate(item.to) })),
+    ...PLATFORM_NAV.map((item) => ({ id: item.to, label: item.label, group: "平台管理", icon: item.icon, onSelect: () => navigate(item.to) })),
+    { id: "action-theme", label: theme === "dark" ? "切换到亮色主题" : "切换到暗色主题", group: "操作", icon: "☾", onSelect: toggle },
+    { id: "action-logout", label: "退出登录", group: "操作", icon: "⎋", onSelect: () => { clearToken(); clearScope(); navigate("/login"); } },
+  ];
 
   return (
     <div className="flex min-h-screen">
@@ -91,6 +99,9 @@ export function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-end gap-3 border-b border-border bg-card px-5">
           <ScopeSwitcher />
+          <Button variant="ghost" aria-label="命令面板" className="h-8 gap-1.5 px-2 font-mono text-[11px] text-muted-foreground" onClick={() => dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))}>
+            ⌘K
+          </Button>
           <Button variant="ghost" onClick={toggle} aria-label="切换主题">
             {theme === "dark" ? "☀" : "☾"}
           </Button>
@@ -100,8 +111,10 @@ export function AppShell() {
           <Button
             variant="secondary"
             onClick={() => {
-              // 登出为客户端行为：会话令牌无服务端存储，清除本地令牌即失效（宿主契约）
+              // 登出为客户端行为：会话令牌无服务端存储，清除本地令牌即失效（宿主契约）；
+              // 活动租户/项目 scope 一并清除，避免换号登录残留上一账号的选择
               clearToken();
+              clearScope();
               navigate("/login");
             }}
           >
@@ -113,6 +126,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette entries={entries} />
     </div>
   );
 }

@@ -15,7 +15,7 @@ export function LoginPage() {
     setBusy(true);
     setError("");
     try {
-      const data = await dispatch<{ token: string; must_change_password: boolean }>(
+      const data = await dispatch<{ token: string }>(
         "auth.login",
         { email, password },
       );

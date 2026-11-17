@@ -1,5 +1,12 @@
+@import "../../MicroFlow4Kit/node_modules/@fontsource-variable/geist/index.css";
+@import "../../MicroFlow4Kit/node_modules/@fontsource-variable/geist-mono/index.css";
 @import "tailwindcss";
-@import "../../packages/ui/src/tokens.css";
+@import "../../MicroFlow4Kit/packages/ui/src/tokens.css";
+
+/* Kit 共享包在项目根之外，Tailwind 自动源检测扫不到：显式登记扫描来源，
+   否则 Kit 独有的工具类（如 size-4 / whitespace-nowrap / 响应式网格）不会生成。 */
+@source "../../MicroFlow4Kit/packages/ui/src";
+@source "../../MicroFlow4Kit/packages/admin/src";
 
 @theme inline {
   --color-background: var(--background);
@@ -21,12 +28,13 @@
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family:
-    "Inter", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }

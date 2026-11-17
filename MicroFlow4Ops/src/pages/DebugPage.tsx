@@ -68,7 +68,7 @@ export function DebugPage() {
             {flows.isPending ? (
               <div className="flex justify-center py-8"><Spinner /></div>
             ) : !codes.length ? (
-              <EmptyState title="暂无 ACTIVE 运行时场景" />
+              <EmptyState title="暂无 ACTIVE 运行时场景" hint="先在编排平台将场景发布为 ACTIVE 版本，即可在此执行调试。" />
             ) : (
               <>
                 <Field label="场景">
@@ -102,10 +102,10 @@ export function DebugPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="py-1.5 font-medium">节点</th>
-                    <th className="py-1.5 font-medium">处理器</th>
-                    <th className="py-1.5 font-medium">状态</th>
-                    <th className="py-1.5 font-medium">耗时</th>
+                    <th className="py-1.5 font-medium font-mono uppercase">节点</th>
+                    <th className="py-1.5 font-medium font-mono uppercase">处理器</th>
+                    <th className="py-1.5 font-medium font-mono uppercase">状态</th>
+                    <th className="py-1.5 font-medium font-mono uppercase">耗时</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -114,7 +114,7 @@ export function DebugPage() {
                       <td className="py-1.5 font-medium">{t.node_id}</td>
                       <td className="py-1.5 text-muted-foreground">{t.action_handler}</td>
                       <td className="py-1.5">{t.status}</td>
-                      <td className="py-1.5 text-muted-foreground">{t.duration_ms}ms</td>
+                      <td className="py-1.5 tabular-nums text-muted-foreground">{t.duration_ms}ms</td>
                     </tr>
                   ))}
                 </tbody>

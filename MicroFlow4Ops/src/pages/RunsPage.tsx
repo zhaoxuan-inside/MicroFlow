@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dispatch } from "@microflow4kit/api";
+import { maxDurationOf, waterfallPct } from "../lib/waterfall";
 import {
   Badge,
   Button,
@@ -9,6 +10,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  cn,
   EmptyState,
   Field,
   Input,
@@ -45,6 +47,7 @@ export function RunsPage() {
   const [status, setStatus] = useState("");
   const [envKey, setEnvKey] = useState("");
   const [selected, setSelected] = useState("");
+  const [detailTab, setDetailTab] = useState<"waterfall" | "logs">("waterfall");
 
   const list = useQuery({
     queryKey: ["ops", "runs", scenario, status, envKey],
@@ -63,7 +66,7 @@ export function RunsPage() {
   });
 
   const rows = list.data?.runs || [];
-  const maxDuration = Math.max(1, ...(detail.data?.node_traces || []).map((t) => t.duration_ms || 0));
+  const maxDuration = maxDurationOf(detail.data?.node_traces);
 
   return (
     <div>
@@ -107,26 +110,26 @@ export function RunsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2.5 font-medium">时间</th>
-                  <th className="px-4 py-2.5 font-medium">场景</th>
-                  <th className="px-4 py-2.5 font-medium">状态</th>
-                  <th className="px-4 py-2.5 font-medium">耗时</th>
-                  <th className="px-4 py-2.5 font-medium">节点</th>
-                  <th className="px-4 py-2.5 font-medium">操作者</th>
-                  <th className="px-4 py-2.5 font-medium"></th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">时间</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">场景</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">状态</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">耗时</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">节点</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase">操作者</th>
+                  <th className="px-4 py-2.5 font-medium font-mono uppercase"></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.trace_id} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground">{r.started_at?.slice(11, 19)}</td>
-                    <td className="px-4 py-2.5 text-xs font-medium">
+                    <td className="px-4 py-2.5 text-xs tabular-nums text-muted-foreground">{r.started_at?.slice(11, 19)}</td>
+                    <td className="px-4 py-2.5 text-xs font-medium font-mono">
                       {r.scenario_code}
                       {r.env_key ? <Badge className="ml-1">{r.env_key}</Badge> : null}
                     </td>
                     <td className="px-4 py-2.5"><Badge tone={statusTone[r.status] || "neutral"}>{r.status}</Badge></td>
-                    <td className="px-4 py-2.5 text-xs">{r.execution_time_ms}ms</td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                    <td className="px-4 py-2.5 text-xs tabular-nums">{r.execution_time_ms}ms</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums text-muted-foreground">
                       {r.node_count}
                       {r.failed_nodes?.length ? <span className="text-destructive">（失败 {r.failed_nodes.length}）</span> : null}
                     </td>
@@ -148,41 +151,110 @@ export function RunsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">
-                  节点瀑布 · {detail.data.scenario_code}
+                  执行详情 · {detail.data.scenario_code}
                   <Badge tone={statusTone[detail.data.status] || "neutral"} className="ml-2">{detail.data.status}</Badge>
                 </CardTitle>
-                <Button variant="secondary" className="h-7 text-xs" onClick={() => setSelected("")}>收起</Button>
+                <div className="flex items-center gap-2">
+                  <div className="flex rounded-md border border-border p-0.5">
+                    {(["waterfall", "logs"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        className={cn(
+                          "rounded px-2.5 py-1 text-xs transition-colors",
+                          detailTab === tab ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:text-foreground",
+                        )}
+                        onClick={() => setDetailTab(tab)}
+                      >
+                        {tab === "waterfall" ? "节点瀑布" : "执行日志"}
+                      </button>
+                    ))}
+                  </div>
+                  <Button variant="secondary" className="h-7 text-xs" onClick={() => setSelected("")}>收起</Button>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="font-mono text-xs text-muted-foreground">
                 trace {detail.data.trace_id} · 总耗时 {detail.data.execution_time_ms}ms
                 {detail.data.error_message ? ` · ${detail.data.error_message}` : ""}
               </p>
             </CardHeader>
             <CardContent className="space-y-1.5">
-              {(detail.data.node_traces || []).map((t) => (
-                <div key={t.node_id} className="flex items-center gap-2 text-xs">
-                  <span className="w-40 shrink-0 truncate font-medium">{t.node_id}</span>
-                  <span className="w-56 shrink-0 truncate text-muted-foreground">{t.action_handler}</span>
-                  <div className="h-4 min-w-0 flex-1 rounded-sm bg-muted/60">
-                    <div
-                      className={`h-4 rounded-sm ${t.status === "SUCCESS" ? "bg-primary/60" : t.status === "SKIPPED" ? "bg-muted-foreground/40" : "bg-destructive/70"}`}
-                      style={{ width: `${Math.max(3, ((t.duration_ms || 0) / maxDuration) * 100)}%` }}
-                      title={`${t.duration_ms}ms`}
-                    />
+              {detailTab === "waterfall" ? (
+                <>
+                  {(detail.data.node_traces || []).map((t) => (
+                    <div key={t.node_id} className="flex items-center gap-2 text-xs">
+                      <span className="w-40 shrink-0 truncate font-medium">{t.node_id}</span>
+                      <span className="w-56 shrink-0 truncate text-muted-foreground">{t.action_handler}</span>
+                      <div className="h-4 min-w-0 flex-1 rounded-sm bg-muted/60">
+                        <div
+                          className={`h-4 rounded-sm ${t.status === "SUCCESS" ? "bg-primary/60" : t.status === "SKIPPED" ? "bg-muted-foreground/40" : "bg-destructive/70"}`}
+                          style={{ width: `${waterfallPct(t.duration_ms, maxDuration)}%` }}
+                          title={`${t.duration_ms}ms`}
+                        />
+                      </div>
+                      <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">{t.duration_ms}ms</span>
+                      <Badge tone={t.status === "SUCCESS" ? "success" : t.status === "SKIPPED" ? "neutral" : "destructive"}>
+                        {t.status}
+                      </Badge>
+                      {t.error && <span className="w-64 truncate text-destructive">{t.error}</span>}
+                    </div>
+                  ))}
+                  <div className="pt-2">
+                    <div className="mb-1 text-xs font-medium text-muted-foreground">最终输出（截断展示）</div>
+                    <pre className="max-h-40 overflow-auto rounded-md border border-border bg-muted/30 p-2.5 font-mono text-[11px]">
+                      {JSON.stringify(detail.data.node_traces?.find((t) => t.output)?.output ?? "—", null, 2)}
+                    </pre>
                   </div>
-                  <span className="w-20 shrink-0 text-right text-muted-foreground">{t.duration_ms}ms</span>
-                  <Badge tone={t.status === "SUCCESS" ? "success" : t.status === "SKIPPED" ? "neutral" : "destructive"}>
-                    {t.status}
-                  </Badge>
-                  {t.error && <span className="w-64 truncate text-destructive">{t.error}</span>}
+                </>
+              ) : (
+                <div className="space-y-1">
+                  {/* 执行日志：时间序逐节点行 + 可展开的节点输出（真实 trace 数据） */}
+                  {(detail.data.node_traces || []).map((t, i) => (
+                    <details key={t.node_id + i} className="group rounded-md border border-border/60 open:bg-muted/30">
+                      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 font-mono text-xs">
+                        <span className="text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
+                        <span className={cn(
+                          "inline-block size-1.5 rounded-full",
+                          t.status === "SUCCESS" ? "bg-success" : t.status === "SKIPPED" ? "bg-muted-foreground" : "bg-destructive",
+                        )} />
+                        <span className="font-medium">{t.node_id}</span>
+                        <Badge tone={t.status === "SUCCESS" ? "success" : t.status === "SKIPPED" ? "neutral" : "destructive"}>{t.status}</Badge>
+                        <span className="tabular-nums text-muted-foreground">{t.duration_ms}ms</span>
+                        {t.error && <span className="truncate text-destructive">{t.error}</span>}
+                        <span className="ml-auto text-muted-foreground group-open:hidden">▸</span>
+                        <span className="ml-auto hidden text-muted-foreground group-open:inline">▾</span>
+                      </summary>
+                      <div className="space-y-2 border-t border-border/60 px-3 py-2.5">
+                        <div>
+                          <div className="mb-1 text-[11px] font-medium text-muted-foreground">处理器</div>
+                          <div className="font-mono text-xs">{t.action_handler}</div>
+                        </div>
+                        {t.output !== undefined && t.output !== null && (
+                          <div>
+                            <div className="mb-1 text-[11px] font-medium text-muted-foreground">节点输出</div>
+                            <pre className="max-h-48 overflow-auto rounded-md border border-border bg-muted/30 p-2.5 font-mono text-[11px]">
+                              {JSON.stringify(t.output, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                        {t.error && (
+                          <div>
+                            <div className="mb-1 text-[11px] font-medium text-destructive">错误</div>
+                            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2.5 font-mono text-xs text-destructive">
+                              {t.error}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  ))}
+                  <div className="pt-2">
+                    <div className="mb-1 text-xs font-medium text-muted-foreground">最终输出</div>
+                    <pre className="max-h-40 overflow-auto rounded-md border border-border bg-muted/30 p-2.5 font-mono text-[11px]">
+                      {JSON.stringify(detail.data.node_traces?.find((t) => t.output)?.output ?? "—", null, 2)}
+                    </pre>
+                  </div>
                 </div>
-              ))}
-              <div className="pt-2">
-                <div className="mb-1 text-xs font-medium text-muted-foreground">最终输出（截断展示）</div>
-                <pre className="max-h-40 overflow-auto rounded-md border border-border bg-muted/30 p-2.5 font-mono text-[11px]">
-                  {JSON.stringify(detail.data.node_traces?.find((t) => t.output)?.output ?? "—", null, 2)}
-                </pre>
-              </div>
+              )}
             </CardContent>
           </Card>
         )}

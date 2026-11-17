@@ -26,7 +26,8 @@
       "@microflow4kit/admin": [
         "../MicroFlow4Kit/packages/admin/src/index.tsx"
       ]
-    }
+    },
+    "resolveJsonModule": true
   },
   "include": [
     "src",

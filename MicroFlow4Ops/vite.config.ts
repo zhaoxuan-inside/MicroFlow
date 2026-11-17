@@ -16,6 +16,12 @@ export default defineConfig({
     port: 4602,
     proxy: {
       "/api": { target: "http://127.0.0.1:3000", changeOrigin: true },
+      // 告警等控制面能力：/orch-api → FastAPI 控制面（与编排平台同一后端）
+      "/orch-api": {
+        target: "http://127.0.0.1:8200",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/orch-api/, "/api"),
+      },
     },
   },
 });

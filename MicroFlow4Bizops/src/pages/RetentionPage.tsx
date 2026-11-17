@@ -1,6 +1,7 @@
 /** 留存：操作者×日活跃矩阵（真实审计足迹）+ D1/D7 复访率。 */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { dispatch } from "@microflow4kit/api";
 import {
   Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Field,
@@ -18,27 +19,28 @@ interface Retention {
 }
 
 export function RetentionPage() {
+  const { t } = useTranslation("bizops");
   const [days, setDays] = useState(14);
   const query = useQuery({
     queryKey: ["bizops", "retention", days],
     queryFn: () => dispatch<Retention>("bizops.retention", { days }),
   });
   const data = query.data;
-  const activeSet = useMemoSet(data);
+  const activeSet = buildActiveSet(data);
 
   return (
     <div>
-      <PageHeader title="留存" description="操作者 × 日活跃矩阵（真实审计足迹判定活跃）" />
+      <PageHeader title={t("nav.retention")} description={t("retention.description")} />
       <PermissionGate
         permission="page:bizops_console"
-        fallback={<Card className="p-6 text-sm text-muted-foreground">需要运营平台入口权限（page:bizops_console）。</Card>}
+        fallback={<Card className="p-6 text-sm text-muted-foreground">{t("gate")}</Card>}
       >
         <Card className="mb-4">
           <CardContent className="flex items-end gap-3 px-4 py-3">
-            <Field label="窗口">
+            <Field label={t("retention.windowLabel")}>
               <Select className="h-8 w-36 text-xs" value={days} onChange={(e) => setDays(Number(e.target.value))}>
-                <option value={7}>最近 7 天</option>
-                <option value={14}>最近 14 天</option>
+                <option value={7}>{t("retention.window7")}</option>
+                <option value={14}>{t("retention.window14")}</option>
               </Select>
             </Field>
           </CardContent>
@@ -47,34 +49,34 @@ export function RetentionPage() {
         {query.isPending ? (
           <Card><CardContent className="flex justify-center py-16"><Spinner /></CardContent></Card>
         ) : !data || !data.cohort_size ? (
-          <Card><div className="p-5"><EmptyState title="窗口内暂无操作者足迹" /></div></Card>
+          <Card><div className="p-5"><EmptyState title={t("retention.empty")} /></div></Card>
         ) : (
           <>
             <div className="mb-4 grid gap-4 sm:grid-cols-3">
               <Card>
-                <CardHeader><CardTitle className="text-muted-foreground">Cohort（足迹操作者）</CardTitle></CardHeader>
-                <CardContent><div className="text-3xl font-semibold tracking-tight">{data.cohort_size}</div></CardContent>
+                <CardHeader><CardTitle className="text-muted-foreground">{t("retention.cohortTitle")}</CardTitle></CardHeader>
+                <CardContent><div className="text-3xl font-semibold tracking-tight tabular-nums">{data.cohort_size}</div></CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle className="text-muted-foreground">D1 复访率</CardTitle></CardHeader>
-                <CardContent><div className="text-3xl font-semibold tracking-tight">{(data.d1_rate * 100).toFixed(1)}%</div></CardContent>
+                <CardHeader><CardTitle className="text-muted-foreground">{t("retention.d1")}</CardTitle></CardHeader>
+                <CardContent><div className="text-3xl font-semibold tracking-tight tabular-nums">{(data.d1_rate * 100).toFixed(1)}%</div></CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle className="text-muted-foreground">D7 复访率</CardTitle></CardHeader>
-                <CardContent><div className="text-3xl font-semibold tracking-tight">{(data.d7_rate * 100).toFixed(1)}%</div></CardContent>
+                <CardHeader><CardTitle className="text-muted-foreground">{t("retention.d7")}</CardTitle></CardHeader>
+                <CardContent><div className="text-3xl font-semibold tracking-tight tabular-nums">{(data.d7_rate * 100).toFixed(1)}%</div></CardContent>
               </Card>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle>活跃矩阵</CardTitle>
-                <p className="text-xs text-muted-foreground">{data.note} · 样本 {data.sample_size} 条（明细截断 200）</p>
+                <CardTitle>{t("retention.matrixTitle")}</CardTitle>
+                <p className="text-xs text-muted-foreground">{data.note} · {t("retention.sampleNote", { n: data.sample_size })}</p>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border text-left text-muted-foreground">
-                      <th className="py-2 pr-3 font-medium">操作者</th>
+                      <th className="py-2 pr-3 font-medium font-mono uppercase">{t("retention.colActor")}</th>
                       {data.days.map((d) => (
                         <th key={d} className="py-2 px-1 font-medium">{d.slice(5)}</th>
                       ))}
@@ -85,7 +87,7 @@ export function RetentionPage() {
                   <tbody>
                     {data.actors.map((a) => (
                       <tr key={a.actor_id} className="border-b border-border/50 last:border-0">
-                        <td className="py-1.5 pr-3 font-medium">{a.actor_id}</td>
+                        <td className="py-1.5 pr-3 font-medium font-mono">{a.actor_id}</td>
                         {data.days.map((d, i) => (
                           <td key={d} className="py-1.5 px-1">
                             <span
@@ -109,7 +111,7 @@ export function RetentionPage() {
   );
 }
 
-function useMemoSet(data: Retention | undefined): Set<string> {
+function buildActiveSet(data: Retention | undefined): Set<string> {
   // 活跃格子键集合（actor:dayIndex）
   const set = new Set<string>();
   for (const a of data?.actors || []) for (const i of a.active_days) set.add(`${a.actor_id}:${i}`);

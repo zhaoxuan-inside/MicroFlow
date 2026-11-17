@@ -25,8 +25,18 @@
       ],
       "@microflow4kit/admin": [
         "../MicroFlow4Kit/packages/admin/src/index.tsx"
+      ],
+      "i18next": [
+        "../MicroFlow4Kit/node_modules/i18next"
+      ],
+      "react-i18next": [
+        "../MicroFlow4Kit/node_modules/react-i18next"
+      ],
+      "i18next-browser-languagedetector": [
+        "../MicroFlow4Kit/node_modules/i18next-browser-languagedetector"
       ]
-    }
+    },
+    "resolveJsonModule": true
   },
   "include": [
     "src",
