@@ -16,4 +16,7 @@
 
 ```bash
 npm install --no-bin-links   # Samba 共享盘一律 --no-bin-links
+npm test                     # node --experimental-transform-types --test（Node >= 22.7）
 ```
+
+租户、项目、环境或登录身份变化时，控制台为新范围创建独立查询缓存并重建页面状态；其他标签页通过 storage 事件同步。该机制防止旧范围缓存继续显示，但不替代宿主服务端的鉴权和数据隔离。

@@ -4,3 +4,5 @@ export * from "./diff";
 export * from "./scope";
 export * from "./overlay";
 export * from "./assetLock";
+export * from "./i18n";
+export * from "./command";

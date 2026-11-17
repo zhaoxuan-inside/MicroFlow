@@ -106,12 +106,6 @@ export function useAssetLock(entityType: AssetKind, options: UseAssetLockOptions
     }
   }, [entityKey, entityType, qc, stopHeartbeat]);
 
-  // 行内锁状态同步（列表刷新带来他人持锁信息时调用）
-  const attach = useCallback((key: string, lockFromRow?: AssetLockState | null) => {
-    setEntityKey(key);
-    setLock(lockFromRow || null);
-  }, []);
-
   // 切换资产 / 卸载：停止心跳
   useEffect(() => {
     return () => stopHeartbeat();
@@ -139,7 +133,6 @@ export function useAssetLock(entityType: AssetKind, options: UseAssetLockOptions
     busy,
     acquire,
     release,
-    attach,
   };
 }
 

@@ -5,11 +5,14 @@
  * 活动租户 ∪ 活动项目 的角色权限并集。
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   dispatch,
   getScope,
+  getToken,
   onScopeChange,
+  onSessionChange,
   setScope as persistScope,
   type ConsoleScope,
 } from "@microflow4kit/api";
@@ -70,14 +73,29 @@ const ScopeContext = createContext<ScopeContextValue | null>(null);
 
 export function ScopeProvider({ children }: { children: ReactNode }) {
   const [scope, setLocalScope] = useState<ConsoleScope>(() => getScope());
+  const [sessionGeneration, setSessionGeneration] = useState(0);
+  const parentClient = useQueryClient();
+  // Cache and page-local state belong to one tenant/project/environment only.
+  const scopeKey = JSON.stringify([sessionGeneration, scope.tenantId, scope.projectId, scope.envKey]);
+  const scopedClient = useMemo(() => new QueryClient({
+    defaultOptions: parentClient.getDefaultOptions(),
+  }), [parentClient, scopeKey]);
+
+  useEffect(() => () => {
+    void scopedClient.cancelQueries();
+    scopedClient.clear();
+  }, [scopedClient]);
 
   useEffect(() => {
     return onScopeChange((next) => setLocalScope(next));
   }, []);
 
+  useEffect(() => onSessionChange(() => setSessionGeneration((value) => value + 1)), []);
+
   const q = useQuery({
-    queryKey: ["platform", "my-scope"],
+    queryKey: ["platform", "my-scope", sessionGeneration],
     queryFn: () => dispatch<MyScope>("platform.scope.my", {}),
+    enabled: Boolean(getToken()),
     retry: false,
   });
 
@@ -160,7 +178,9 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     refresh,
   };
 
-  return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
+  return <ScopeContext.Provider value={value}>
+    <QueryClientProvider key={scopeKey} client={scopedClient}>{children}</QueryClientProvider>
+  </ScopeContext.Provider>;
 }
 
 export function useScope(): ScopeContextValue {
@@ -190,6 +210,7 @@ export function PermissionGate({
 
 /** 租户 → 项目级联切换器（支撑平台头部）。 */
 export function ScopeSwitcher({ className }: { className?: string }) {
+  const { t } = useTranslation("ui");
   const { myScope, activeTenant, activeProject, activeEnvironments, scope, selectTenant, selectProject, selectEnvironment } = useScope();
 
   if (!myScope) return null;
@@ -200,41 +221,41 @@ export function ScopeSwitcher({ className }: { className?: string }) {
   return (
     <Card className={cn("border-border/60", className)}>
       <CardContent className="flex flex-wrap items-center gap-2 px-3 py-2">
-        <span className="text-xs font-medium text-muted-foreground">范围</span>
+        <span className="text-xs font-medium text-muted-foreground">{t("scope.label")}</span>
         <select
-          aria-label="选择租户"
+          aria-label={t("scope.selectTenant")}
           className="h-8 rounded-md border border-border bg-background px-2 text-xs"
           value={activeTenant?.tenant_id || ""}
           onChange={(e) => selectTenant(e.target.value)}
         >
-          <option value="">未选租户</option>
-          {myScope.tenants.map((t) => (
-            <option key={t.tenant_id} value={t.tenant_id}>
-              {t.name}
+          <option value="">{t("scope.noTenant")}</option>
+          {myScope.tenants.map((tenant) => (
+            <option key={tenant.tenant_id} value={tenant.tenant_id}>
+              {tenant.name}
             </option>
           ))}
         </select>
         <select
-          aria-label="选择项目"
+          aria-label={t("scope.selectProject")}
           className="h-8 rounded-md border border-border bg-background px-2 text-xs"
           value={activeProject?.project_id || ""}
           onChange={(e) => selectProject(e.target.value)}
         >
-          <option value="">未选项目</option>
-          {projects.map((p) => (
-            <option key={p.project_id} value={p.project_id}>
-              {p.name}
+          <option value="">{t("scope.noProject")}</option>
+          {projects.map((project) => (
+            <option key={project.project_id} value={project.project_id}>
+              {project.name}
             </option>
           ))}
         </select>
         {activeProject && (
           <select
-            aria-label="选择环境"
+            aria-label={t("scope.selectEnv")}
             className="h-8 rounded-md border border-border bg-background px-2 text-xs"
             value={scope.envKey}
             onChange={(e) => selectEnvironment(e.target.value)}
           >
-            <option value="">默认环境</option>
+            <option value="">{t("scope.defaultEnv")}</option>
             {activeEnvironments.map((env) => (
               <option key={env.key} value={env.key}>
                 {env.name}{env.protected ? " 🔒" : ""}
@@ -254,18 +275,19 @@ export function ScopeSwitcher({ className }: { className?: string }) {
 
 /** 无任何租户/项目授权时的空态引导。 */
 export function ScopeEmptyHint({ hint }: { hint?: string }) {
+  const { t } = useTranslation("ui");
   const { myScope, loading } = useScope();
   if (loading || !myScope) return null;
   if (myScope.is_platform_super || myScope.tenants.length > 0) return null;
   return (
     <Card className="border-dashed">
       <CardContent className="flex flex-col items-start gap-2 px-5 py-4">
-        <div className="text-sm font-medium">尚未加入任何租户</div>
+        <div className="text-sm font-medium">{t("scope.emptyTitle")}</div>
         <div className="text-xs text-muted-foreground">
-          {hint || "请联系平台管理员将你加入租户与项目，或申请相应权限。"}
+          {hint || t("scope.emptyHint")}
         </div>
         <Button variant="secondary" className="h-7 text-xs" onClick={() => window.location.reload()}>
-          刷新授权
+          {t("common.refreshAuth")}
         </Button>
       </CardContent>
     </Card>

@@ -26,10 +26,26 @@ export function getToken(): string {
 
 export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
+  window.dispatchEvent(new Event(`${host.eventNamespace}:session-changed`));
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+  window.dispatchEvent(new Event(`${host.eventNamespace}:session-changed`));
+}
+
+/** Notify all console views when the current identity changes. */
+export function onSessionChange(cb: () => void): () => void {
+  const eventName = `${host.eventNamespace}:session-changed`;
+  const storageHandler = (event: StorageEvent) => {
+    if (event.storageArea === localStorage && (event.key === TOKEN_KEY || event.key === null)) cb();
+  };
+  window.addEventListener(eventName, cb);
+  window.addEventListener("storage", storageHandler);
+  return () => {
+    window.removeEventListener(eventName, cb);
+    window.removeEventListener("storage", storageHandler);
+  };
 }
 
 export async function dispatch<T = any>(

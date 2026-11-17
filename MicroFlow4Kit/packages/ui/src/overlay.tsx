@@ -13,6 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "./primitives";
 import { Button } from "./primitives";
 
@@ -162,7 +163,7 @@ export function Modal({
 
 export function ModalActions({
   onCancel,
-  cancelLabel = "取消",
+  cancelLabel,
   children,
   busy,
 }: {
@@ -171,10 +172,11 @@ export function ModalActions({
   children: ReactNode;
   busy?: boolean;
 }) {
+  const { t } = useTranslation("ui");
   return (
     <>
       <Button variant="secondary" onClick={onCancel} disabled={busy}>
-        {cancelLabel}
+        {cancelLabel ?? t("modal.cancel")}
       </Button>
       {children}
     </>

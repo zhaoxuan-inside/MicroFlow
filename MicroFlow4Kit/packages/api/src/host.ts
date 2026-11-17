@@ -14,6 +14,8 @@ export const host = {
   scopeKey: env.VITE_CONSOLE_SCOPE_KEY || "mf_console_scope",
   /** 主题存储键 */
   themeKey: env.VITE_CONSOLE_THEME_KEY || "mf_console_theme",
+  /** 界面语言存储键（i18next languageDetector 持久化） */
+  localeKey: env.VITE_CONSOLE_LOCALE_KEY || "mf_console_locale",
   /** scope 变更广播事件名 */
   eventNamespace: env.VITE_CONSOLE_EVENT_NAMESPACE || "mf-console",
   /** 品牌名（标题/登录页） */

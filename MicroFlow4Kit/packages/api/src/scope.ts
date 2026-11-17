@@ -43,6 +43,14 @@ export function clearScope() {
 
 export function onScopeChange(cb: (scope: ConsoleScope) => void): () => void {
   const handler = (event: Event) => cb((event as CustomEvent<ConsoleScope>).detail || getScope());
-  window.addEventListener(`${host.eventNamespace}:scope-changed`, handler);
-  return () => window.removeEventListener("mf-console:scope-changed", handler);
+  const storageHandler = (event: StorageEvent) => {
+    if (event.storageArea === localStorage && (event.key === SCOPE_KEY || event.key === null)) cb(getScope());
+  };
+  const eventName = `${host.eventNamespace}:scope-changed`;
+  window.addEventListener(eventName, handler);
+  window.addEventListener("storage", storageHandler);
+  return () => {
+    window.removeEventListener(eventName, handler);
+    window.removeEventListener("storage", storageHandler);
+  };
 }

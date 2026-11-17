@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
@@ -7,6 +8,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { clsx } from "clsx";
 
 export function cn(...parts: Array<string | false | null | undefined>) {
@@ -30,7 +32,8 @@ export function Button({
     <button
       className={cn(
         "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-transparent px-3.5",
-        "text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50",
+        "text-sm font-medium transition-all duration-150 ease-out",
+        "active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         buttonStyles[variant],
         className,
@@ -45,6 +48,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
     <div
       className={cn(
         "rounded-lg border border-border bg-card text-card-foreground shadow-xs",
+        "transition-[box-shadow,border-color] duration-200 ease-out",
         className,
       )}
       {...props}
@@ -83,7 +87,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
         tones[tone],
         className,
       )}
@@ -186,5 +190,56 @@ export function Field({
       {children}
       {hint && <span className="text-[11px] text-muted-foreground/80">{hint}</span>}
     </label>
+  );
+}
+
+/** 破坏性操作确认框（原生 <dialog>：自带焦点圈定与 Esc 关闭，零依赖）。 */
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation("ui");
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+  return (
+    <dialog
+      ref={ref}
+      aria-label={title}
+      onCancel={onCancel}
+      onClick={(e) => {
+        // 点击 backdrop（dialog 自身）取消；点击内容区不关闭
+        if (e.target === ref.current) onCancel();
+      }}
+      className="w-full max-w-sm rounded-lg border border-border bg-card p-5 text-left shadow-lg backdrop:bg-foreground/40"
+    >
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      {description && <p className="mt-1.5 text-xs text-muted-foreground">{description}</p>}
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="secondary" className="h-8 text-xs" onClick={onCancel}>
+          {cancelLabel ?? t("confirm.cancel")}
+        </Button>
+        <Button variant="destructive" className="h-8 text-xs" onClick={onConfirm}>
+          {confirmLabel ?? t("confirm.delete")}
+        </Button>
+      </div>
+    </dialog>
   );
 }

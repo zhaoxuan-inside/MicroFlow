@@ -3,7 +3,9 @@
  * 全部经统一网关分发（platform.* 场景）；权限由后端强制，前端以 PermissionGate
  * / useScope 镜像显隐，避免无权操作的无效交互。
  */
+import "./i18n";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dispatch } from "@microflow4kit/api";
 import { PermissionGate, useScope } from "@microflow4kit/ui";
@@ -14,14 +16,17 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  ConfirmDialog,
   EmptyState,
+  Field,
   Input,
   PageHeader,
+  Select,
   Spinner,
   cn,
 } from "@microflow4kit/ui";
 
-const th = "px-4 py-2.5 text-left text-xs font-medium text-muted-foreground";
+const th = "px-4 py-2.5 text-left text-xs font-medium font-mono uppercase text-muted-foreground";
 const td = "px-4 py-2.5 align-middle";
 
 function useInvalidate() {
@@ -105,9 +110,9 @@ function RoleSelect({
   ariaLabel: string;
 }) {
   return (
-    <select
+    <Select
       aria-label={ariaLabel}
-      className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+      className="h-8 text-xs"
       value={value}
       onChange={(e) => onChange(e.target.value)}
     >
@@ -116,7 +121,7 @@ function RoleSelect({
           {r.name}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 
@@ -133,6 +138,7 @@ interface PlatformUser {
 }
 
 export function UsersPage() {
+  const { t } = useTranslation("admin");
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [resetUid, setResetUid] = useState("");
@@ -167,11 +173,11 @@ export function UsersPage() {
 
   return (
     <div>
-      <PageHeader title="用户管理" description="平台账号、角色与账号状态（全平台唯一入口）" />
+      <PageHeader title={t("users.title")} description={t("users.description")} />
       <Card className="mb-4">
         <CardContent className="flex items-center gap-2 px-4 py-3">
           <Input
-            placeholder="搜索邮箱 / 昵称 / uid"
+            placeholder={t("users.searchPlaceholder")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="h-8 max-w-xs text-xs"
@@ -183,15 +189,15 @@ export function UsersPage() {
         {list.isPending ? (
           <div className="flex justify-center py-16"><Spinner /></div>
         ) : !list.data?.users?.length ? (
-          <div className="p-5"><EmptyState title="没有匹配的用户" /></div>
+          <div className="p-5"><EmptyState title={t("users.noMatch")} /></div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className={th}>用户</th>
-                <th className={th}>平台角色</th>
-                <th className={th}>状态</th>
-                <th className={th}>操作</th>
+              <tr className="border-b border-border bg-muted/50 text-left">
+                <th className={th}>{t("ui:common.user")}</th>
+                <th className={th}>{t("users.platformRole")}</th>
+                <th className={th}>{t("ui:common.status")}</th>
+                <th className={th}>{t("ui:common.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -199,44 +205,44 @@ export function UsersPage() {
                 <tr key={u.uid} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
                   <td className={td}>
                     <div className="font-medium">{u.nickname || u.email}</div>
-                    <div className="text-xs text-muted-foreground">{u.email} · {u.uid}</div>
+                    <div className="text-xs text-muted-foreground">{u.nickname && u.nickname !== u.email ? `${u.email} · ` : ""}{u.uid}</div>
                   </td>
                   <td className={td}>
                     <select
-                      aria-label={`设置 ${u.email} 的平台角色`}
+                      aria-label={t("users.setStatusAria", { email: u.email })}
                       className="h-8 rounded-md border border-border bg-background px-2 text-xs"
                       value={u.role}
                       onChange={(e) => setRole(u.uid, e.target.value)}
                     >
-                      <option value="ADMIN">平台管理员</option>
-                      <option value="MAKER">创客</option>
-                      <option value="GUEST">访客</option>
+                      <option value="ADMIN">{t("users.roleAdmin")}</option>
+                      <option value="MAKER">{t("users.roleMaker")}</option>
+                      <option value="GUEST">{t("users.roleGuest")}</option>
                     </select>
                   </td>
                   <td className={td}>
-                    {u.is_active ? <Badge tone="success">启用</Badge> : <Badge tone="destructive">停用</Badge>}
+                    {u.is_active ? <Badge tone="success">{t("ui:common.enable")}</Badge> : <Badge tone="destructive">{t("ui:common.disable")}</Badge>}
                   </td>
                   <td className={td}>
                     <div className="flex gap-2">
                       <Button variant="secondary" className="h-7 text-xs"
                         onClick={() => setActive(u.uid, !u.is_active)}>
-                        {u.is_active ? "停用" : "启用"}
+                        {u.is_active ? t("ui:common.disable") : t("ui:common.enable")}
                       </Button>
                       <Button variant="secondary" className="h-7 text-xs"
                         onClick={() => setResetUid(resetUid === u.uid ? "" : u.uid)}>
-                        重置密码
+                        {t("users.resetPassword")}
                       </Button>
                     </div>
                     {resetUid === u.uid && (
                       <div className="mt-2 flex items-center gap-2">
                         <Input
                           type="password"
-                          placeholder="新密码（至少 8 位）"
+                          placeholder={t("users.newPasswordPlaceholder")}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           className="h-8 max-w-[180px] text-xs"
                         />
-                        <Button className="h-7 text-xs" onClick={() => resetPassword(u.uid)}>确认</Button>
+                        <Button className="h-7 text-xs" onClick={() => resetPassword(u.uid)}>{t("ui:common.confirm")}</Button>
                       </div>
                     )}
                   </td>
@@ -271,6 +277,7 @@ interface TenantMember {
 }
 
 export function TenantsPage() {
+  const { t } = useTranslation("admin");
   const { hasPermission } = useScope();
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ code: "", name: "", description: "" });
@@ -300,25 +307,26 @@ export function TenantsPage() {
 
   return (
     <div>
-      <PageHeader title="租户管理" description="组织实体与其成员；项目挂在租户下" />
+      <PageHeader title={t("tenants.title")} description={t("tenants.description")} />
       {error && <div className="mb-3 text-xs text-destructive">{error}</div>}
       <PermissionGate permission="platform:tenant_manage">
         <Card className="mb-4">
-          <CardHeader><CardTitle>创建租户</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap items-end gap-2">
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">编码（小写字母/数字/连字符）</div>
-              <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="h-8 w-44 text-xs" />
+          <CardHeader><CardTitle>{t("tenants.create")}</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label={t("tenants.codeLabel")} hint={t("tenants.codeHint")}>
+                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="h-8 text-xs" />
+              </Field>
+              <Field label={t("common.name")}>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-8 text-xs" />
+              </Field>
+              <Field label={t("common.description")}>
+                <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-8 text-xs" />
+              </Field>
+              <div className="flex items-end">
+                <Button className="h-8 text-xs" onClick={create}>{t("tenants.submit")}</Button>
+              </div>
             </div>
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">名称</div>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-8 w-44 text-xs" />
-            </div>
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">描述</div>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-8 w-60 text-xs" />
-            </div>
-            <Button className="h-8 text-xs" onClick={create}>创建（创建人自动成为租户管理员）</Button>
           </CardContent>
         </Card>
       </PermissionGate>
@@ -326,38 +334,44 @@ export function TenantsPage() {
         {tenants.isPending ? (
           <div className="flex justify-center py-16"><Spinner /></div>
         ) : !tenants.data?.tenants?.length ? (
-          <div className="p-5"><EmptyState title="暂无租户" hint={canManage ? "先创建一个租户开始组织协作。" : "请联系平台管理员加入租户。"} /></div>
+          <div className="p-5"><EmptyState title={t("tenants.emptyTitle")} hint={canManage ? t("tenants.emptyManageHint") : t("tenants.emptyViewHint")} /></div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className={th}>租户</th>
-                <th className={th}>状态</th>
-                <th className={th}>成员</th>
-                {canManage && <th className={th}>操作</th>}
+              <tr className="border-b border-border bg-muted/50 text-left">
+                <th className={th}>{t("ui:common.tenant")}</th>
+                <th className={th}>{t("ui:common.status")}</th>
+                <th className={th}>{t("ui:common.members")}</th>
+                {canManage && <th className={th}>{t("ui:common.actions")}</th>}
               </tr>
             </thead>
             <tbody>
-              {tenants.data.tenants.map((t) => (
-                <tr key={t.tenant_id} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
+              {tenants.data.tenants.map((tenant) => (
+                <tr key={tenant.tenant_id} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
                   <td className={td}>
-                    <div className="font-medium">{t.name}</div>
-                    <div className="text-xs text-muted-foreground">{t.code}{t.description ? ` · ${t.description}` : ""}</div>
+                    <div className="font-medium">{tenant.name}</div>
+                    {(tenant.code !== tenant.name || tenant.description) && (
+                      <div className="text-xs text-muted-foreground">
+                        {tenant.code !== tenant.name
+                          ? `${tenant.code}${tenant.description ? ` · ${tenant.description}` : ""}`
+                          : tenant.description}
+                      </div>
+                    )}
                   </td>
                   <td className={td}>
-                    {t.status === "ACTIVE" ? <Badge tone="success">启用</Badge> : <Badge tone="warning">停用</Badge>}
+                    {tenant.status === "ACTIVE" ? <Badge tone="success">{t("ui:common.enable")}</Badge> : <Badge tone="warning">{t("ui:common.disable")}</Badge>}
                   </td>
                   <td className={td}>
                     <Button variant="secondary" className="h-7 text-xs"
-                      onClick={() => setOpenMembers(openMembers === t.tenant_id ? "" : t.tenant_id)}>
-                      成员
+                      onClick={() => setOpenMembers(openMembers === tenant.tenant_id ? "" : tenant.tenant_id)}>
+                      {t("ui:common.members")}
                     </Button>
                   </td>
                   {canManage && (
                     <td className={td}>
                       <Button variant="secondary" className="h-7 text-xs"
-                        onClick={() => setStatus(t.tenant_id, t.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE")}>
-                        {t.status === "ACTIVE" ? "停用" : "启用"}
+                        onClick={() => setStatus(tenant.tenant_id, tenant.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE")}>
+                        {tenant.status === "ACTIVE" ? t("ui:common.disable") : t("ui:common.enable")}
                       </Button>
                     </td>
                   )}
@@ -387,6 +401,7 @@ function TenantMembersPanel({
   roles: RoleOption[];
   canManage: boolean;
 }) {
+  const { t } = useTranslation("admin");
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -423,27 +438,27 @@ function TenantMembersPanel({
 
   return (
     <Card className="mt-4">
-      <CardHeader><CardTitle>租户成员</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{t("tenants.panelTitle")}</CardTitle></CardHeader>
       <CardContent>
         {error && <div className="mb-2 text-xs text-destructive">{error}</div>}
         {canManage && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <Input placeholder="邮箱或 uid" value={account} onChange={(e) => setAccount(e.target.value)} className="h-8 w-56 text-xs" />
-            <RoleSelect roles={roles} value={roleId} onChange={setRoleId} ariaLabel="选择租户角色" />
-            <Button className="h-8 text-xs" onClick={add}>添加成员</Button>
+            <Input placeholder={t("tenants.memberIdPlaceholder")} value={account} onChange={(e) => setAccount(e.target.value)} className="h-8 w-56 text-xs" />
+            <RoleSelect roles={roles} value={roleId} onChange={setRoleId} ariaLabel={t("tenants.roleSelectAria")} />
+            <Button className="h-8 text-xs" onClick={add}>{t("ui:common.addMember")}</Button>
           </div>
         )}
         {members.isPending ? (
           <div className="flex justify-center py-8"><Spinner /></div>
         ) : !members.data?.members?.length ? (
-          <EmptyState title="暂无成员" />
+          <EmptyState title={t("ui:common.noMembers")} />
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className={th}>成员</th>
-                <th className={th}>角色</th>
-                {canManage && <th className={th}>操作</th>}
+              <tr className="border-b border-border bg-muted/50 text-left">
+                <th className={th}>{t("ui:common.members")}</th>
+                <th className={th}>{t("ui:common.role")}</th>
+                {canManage && <th className={th}>{t("ui:common.actions")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -451,18 +466,20 @@ function TenantMembersPanel({
                 <tr key={m.binding_id} className="border-b border-border/60 last:border-0">
                   <td className={td}>
                     <div className="font-medium">{m.nickname || m.email}</div>
-                    <div className="text-xs text-muted-foreground">{m.email}</div>
+                    {m.nickname && m.nickname !== m.email && (
+                      <div className="text-xs text-muted-foreground">{m.email}</div>
+                    )}
                   </td>
                   <td className={td}>
                     {canManage ? (
-                      <RoleSelect roles={roles} value={m.role_id} onChange={(r) => setRole(m.user_id, r)} ariaLabel={`调整 ${m.email} 的角色`} />
+                      <RoleSelect roles={roles} value={m.role_id} onChange={(r) => setRole(m.user_id, r)} ariaLabel={t("tenants.adjustRoleAria", { email: m.email })} />
                     ) : (
                       <Badge>{m.role_name}</Badge>
                     )}
                   </td>
                   {canManage && (
                     <td className={td}>
-                      <Button variant="destructive" className="h-7 text-xs" onClick={() => remove(m.user_id)}>移出</Button>
+                      <Button variant="destructive" className="h-7 text-xs" onClick={() => remove(m.user_id)}>{t("ui:common.remove")}</Button>
                     </td>
                   )}
                 </tr>
@@ -488,9 +505,10 @@ interface ProjectRow {
   my_role: string;
 }
 
-interface ProjectMember extends TenantMember {}
+type ProjectMember = TenantMember;
 
 export function ProjectsPage() {
+  const { t } = useTranslation("admin");
   const { myScope, hasPermission } = useScope();
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ tenant_id: "", key: "", name: "", description: "" });
@@ -521,39 +539,39 @@ export function ProjectsPage() {
 
   return (
     <div>
-      <PageHeader title="项目管理" description="编排资产与支撑平台操作的作用域单位；项目间相互隔离" />
+      <PageHeader title={t("projects.title")} description={t("projects.description")} />
       {error && <div className="mb-3 text-xs text-destructive">{error}</div>}
       {canCreate && (
         <Card className="mb-4">
-          <CardHeader><CardTitle>创建项目</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap items-end gap-2">
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">所属租户</div>
-              <select
-                aria-label="选择所属租户"
-                className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                value={form.tenant_id}
-                onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
-              >
-                <option value="">选择租户</option>
-                {(myScope?.tenants || []).map((t) => (
-                  <option key={t.tenant_id} value={t.tenant_id}>{t.name}</option>
-                ))}
-              </select>
+          <CardHeader><CardTitle>{t("projects.create")}</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label={t("projects.tenantLabel")}>
+                <Select
+                  aria-label={t("projects.tenantSelectAria")}
+                  className="h-8 text-xs"
+                  value={form.tenant_id}
+                  onChange={(e) => setForm({ ...form, tenant_id: e.target.value })}
+                >
+                  <option value="">{t("projects.tenantPlaceholder")}</option>
+                  {(myScope?.tenants || []).map((tenant) => (
+                    <option key={tenant.tenant_id} value={tenant.tenant_id}>{tenant.name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={t("projects.idLabel")} hint={t("projects.idHint")}>
+                <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} className="h-8 text-xs" />
+              </Field>
+              <Field label={t("common.name")}>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-8 text-xs" />
+              </Field>
+              <Field label={t("common.description")}>
+                <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-8 text-xs" />
+              </Field>
             </div>
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">项目标识（小写字母/数字/连字符）</div>
-              <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} className="h-8 w-40 text-xs" />
+            <div className="mt-4 flex justify-end">
+              <Button className="h-8 text-xs" onClick={create}>{t("projects.submit")}</Button>
             </div>
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">名称</div>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-8 w-40 text-xs" />
-            </div>
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">描述</div>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-8 w-56 text-xs" />
-            </div>
-            <Button className="h-8 text-xs" onClick={create}>创建（创建人自动成为项目所有者）</Button>
           </CardContent>
         </Card>
       )}
@@ -561,15 +579,15 @@ export function ProjectsPage() {
         {projects.isPending ? (
           <div className="flex justify-center py-16"><Spinner /></div>
         ) : !projects.data?.projects?.length ? (
-          <div className="p-5"><EmptyState title="暂无项目" hint="加入租户后由租户管理员或项目所有者创建项目。" /></div>
+          <div className="p-5"><EmptyState title={t("projects.emptyTitle")} hint={t("projects.emptyHint")} /></div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className={th}>项目</th>
-                <th className={th}>我的角色</th>
-                <th className={th}>状态</th>
-                <th className={th}>操作</th>
+              <tr className="border-b border-border bg-muted/50 text-left">
+                <th className={th}>{t("ui:common.project")}</th>
+                <th className={th}>{t("projects.myRole")}</th>
+                <th className={th}>{t("ui:common.status")}</th>
+                <th className={th}>{t("ui:common.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -577,22 +595,28 @@ export function ProjectsPage() {
                 <tr key={p.project_id} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
                   <td className={td}>
                     <div className="font-medium">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.key}{p.description ? ` · ${p.description}` : ""}</div>
+                    {(p.key !== p.name || p.description) && (
+                      <div className="text-xs text-muted-foreground">
+                        {p.key !== p.name
+                          ? `${p.key}${p.description ? ` · ${p.description}` : ""}`
+                          : p.description}
+                      </div>
+                    )}
                   </td>
-                  <td className={td}>{p.my_role ? <Badge tone="primary">{p.my_role}</Badge> : <Badge>租户在册</Badge>}</td>
+                  <td className={td}>{p.my_role ? <Badge tone="primary">{p.my_role}</Badge> : <Badge>{t("projects.inTenant")}</Badge>}</td>
                   <td className={td}>
-                    {p.status === "ACTIVE" ? <Badge tone="success">进行中</Badge> : <Badge tone="warning">已归档</Badge>}
+                    {p.status === "ACTIVE" ? <Badge tone="success">{t("projects.ongoing")}</Badge> : <Badge tone="warning">{t("projects.archived")}</Badge>}
                   </td>
                   <td className={td}>
                     <div className="flex gap-2">
                       <Button variant="secondary" className="h-7 text-xs"
                         onClick={() => setOpenMembers(openMembers === p.project_id ? "" : p.project_id)}>
-                        成员
+                        {t("ui:common.members")}
                       </Button>
                       {hasPermission("project:manage") && (
                         <Button variant="secondary" className="h-7 text-xs"
                           onClick={() => setStatus(p.project_id, p.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE")}>
-                          {p.status === "ACTIVE" ? "归档" : "恢复"}
+                          {p.status === "ACTIVE" ? t("projects.archive") : t("projects.restore")}
                         </Button>
                       )}
                     </div>
@@ -623,6 +647,7 @@ function ProjectMembersPanel({
   roles: RoleOption[];
   canManage: boolean;
 }) {
+  const { t } = useTranslation("admin");
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -659,27 +684,27 @@ function ProjectMembersPanel({
 
   return (
     <Card className="mt-4">
-      <CardHeader><CardTitle>项目成员</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{t("projects.panelTitle")}</CardTitle></CardHeader>
       <CardContent>
         {error && <div className="mb-2 text-xs text-destructive">{error}</div>}
         {canManage && (
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <Input placeholder="邮箱或 uid（须已在册于所属租户）" value={account} onChange={(e) => setAccount(e.target.value)} className="h-8 w-64 text-xs" />
-            <RoleSelect roles={roles} value={roleId} onChange={setRoleId} ariaLabel="选择项目角色" />
-            <Button className="h-8 text-xs" onClick={add}>添加成员</Button>
+            <Input placeholder={t("projects.memberIdPlaceholder")} value={account} onChange={(e) => setAccount(e.target.value)} className="h-8 w-64 text-xs" />
+            <RoleSelect roles={roles} value={roleId} onChange={setRoleId} ariaLabel={t("projects.roleSelectAria")} />
+            <Button className="h-8 text-xs" onClick={add}>{t("ui:common.addMember")}</Button>
           </div>
         )}
         {members.isPending ? (
           <div className="flex justify-center py-8"><Spinner /></div>
         ) : !members.data?.members?.length ? (
-          <EmptyState title="暂无成员" />
+          <EmptyState title={t("ui:common.noMembers")} />
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left">
-                <th className={th}>成员</th>
-                <th className={th}>角色</th>
-                {canManage && <th className={th}>操作</th>}
+              <tr className="border-b border-border bg-muted/50 text-left">
+                <th className={th}>{t("ui:common.members")}</th>
+                <th className={th}>{t("ui:common.role")}</th>
+                {canManage && <th className={th}>{t("ui:common.actions")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -687,18 +712,20 @@ function ProjectMembersPanel({
                 <tr key={m.binding_id} className="border-b border-border/60 last:border-0">
                   <td className={td}>
                     <div className="font-medium">{m.nickname || m.email}</div>
-                    <div className="text-xs text-muted-foreground">{m.email}</div>
+                    {m.nickname && m.nickname !== m.email && (
+                      <div className="text-xs text-muted-foreground">{m.email}</div>
+                    )}
                   </td>
                   <td className={td}>
                     {canManage ? (
-                      <RoleSelect roles={roles} value={m.role_id} onChange={(r) => setRole(m.user_id, r)} ariaLabel={`调整 ${m.email} 的项目角色`} />
+                      <RoleSelect roles={roles} value={m.role_id} onChange={(r) => setRole(m.user_id, r)} ariaLabel={t("projects.adjustRoleAria", { email: m.email })} />
                     ) : (
                       <Badge>{m.role_name}</Badge>
                     )}
                   </td>
                   {canManage && (
                     <td className={td}>
-                      <Button variant="destructive" className="h-7 text-xs" onClick={() => remove(m.user_id)}>移出</Button>
+                      <Button variant="destructive" className="h-7 text-xs" onClick={() => remove(m.user_id)}>{t("ui:common.remove")}</Button>
                     </td>
                   )}
                 </tr>
@@ -719,13 +746,63 @@ interface PermissionItem {
   builtin_role: string;
 }
 
+/** 权限点选择器：按前缀分组成网格，替代单行平铺（可读性 + 不撑爆容器）。 */
+function PermissionPicker({
+  permissions,
+  checked,
+  onToggle,
+}: {
+  permissions: PermissionItem[];
+  checked: string[];
+  onToggle: (permission: string, next: boolean) => void;
+}) {
+  const { t } = useTranslation("admin");
+  const groups = new Map<string, string[]>();
+  for (const p of permissions.map((x) => x.permission).sort()) {
+    const key = p.includes(":") ? p.slice(0, p.indexOf(":")) : t("roles.groupOther");
+    groups.set(key, [...(groups.get(key) ?? []), p]);
+  }
+  return (
+    <div>
+      <div className="mb-2.5 text-xs text-muted-foreground">
+        {t("roles.permissionsLabel")}{" "}
+        <span className="font-medium text-foreground tabular-nums">{checked.length}</span>
+        {" / "}
+        <span className="tabular-nums">{permissions.length}</span>
+      </div>
+      <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+        {[...groups.entries()].map(([group, items]) => (
+          <div key={group} className="min-w-0">
+            <div className="mb-1.5 text-[11px] font-medium text-muted-foreground/90">{group}</div>
+            <div className="grid gap-1.5">
+              {items.map((p) => (
+                <label key={p} className="flex min-w-0 items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    className="accent-primary shrink-0"
+                    checked={checked.includes(p)}
+                    onChange={(e) => onToggle(p, e.target.checked)}
+                  />
+                  <span className="truncate text-foreground/90">{p}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function RolesPage() {
+  const { t } = useTranslation("admin");
   const { myScope, hasPermission } = useScope();
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ scope: "PROJECT", code: "", name: "", description: "" });
   const [checked, setChecked] = useState<string[]>([]);
   const [editing, setEditing] = useState("");
   const [editChecked, setEditChecked] = useState<string[]>([]);
+  const [confirmRemove, setConfirmRemove] = useState<RoleOption | null>(null);
   const invalidate = useInvalidate();
   const canManage = hasPermission("platform:role_manage") || hasPermission("tenant:role_manage");
 
@@ -760,61 +837,53 @@ export function RolesPage() {
       invalidate("platform", "roles");
     }
   };
-  const remove = async (roleId: string) => {
-    const err = await run(() => mutate("roles.delete", { role_id: roleId }));
+  const remove = async (role: RoleOption) => {
+    const err = await run(() => mutate("roles.delete", { role_id: role.role_id }));
     setError(err);
+    setConfirmRemove(null);
     if (!err) invalidate("platform", "roles");
   };
 
   return (
     <div>
-      <PageHeader title="角色与权限" description="可配置角色：权限点按范围（平台/租户/项目）授予" />
+      <PageHeader title={t("roles.title")} description={t("roles.description")} />
       {error && <div className="mb-3 text-xs text-destructive">{error}</div>}
       {canManage && (
         <Card className="mb-4">
-          <CardHeader><CardTitle>创建自定义角色</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{t("roles.create")}</CardTitle></CardHeader>
           <CardContent>
-            <div className="mb-3 flex flex-wrap items-end gap-2">
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">生效范围</div>
-                <select
-                  aria-label="选择角色生效范围"
-                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label={t("roles.scopeLabel")}>
+                <Select
+                  aria-label={t("roles.scopeAria")}
+                  className="h-8 text-xs"
                   value={form.scope}
                   onChange={(e) => setForm({ ...form, scope: e.target.value })}
                 >
-                  <option value="PROJECT">项目</option>
-                  <option value="TENANT">租户</option>
-                </select>
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">编码</div>
-                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="h-8 w-44 text-xs" />
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">名称</div>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-8 w-40 text-xs" />
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">描述</div>
-                <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-8 w-56 text-xs" />
-              </div>
+                  <option value="PROJECT">{t("ui:common.project")}</option>
+                  <option value="TENANT">{t("ui:common.tenant")}</option>
+                </Select>
+              </Field>
+              <Field label={t("roles.codeLabel")}>
+                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="h-8 text-xs" placeholder={t("roles.codePlaceholder")} />
+              </Field>
+              <Field label={t("ui:common.name")}>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="h-8 text-xs" placeholder={t("roles.namePlaceholder")} />
+              </Field>
+              <Field label={t("ui:common.description")}>
+                <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="h-8 text-xs" placeholder={t("roles.descPlaceholder")} />
+              </Field>
             </div>
-            <div className="mb-3 flex flex-wrap gap-2">
-              {(permissions.data?.permissions || []).map((p) => (
-                <label key={p.permission} className="flex items-center gap-1.5 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={checked.includes(p.permission)}
-                    onChange={(e) =>
-                      setChecked(e.target.checked ? [...checked, p.permission] : checked.filter((x) => x !== p.permission))
-                    }
-                  />
-                  {p.permission}
-                </label>
-              ))}
+            <div className="mt-4 rounded-md border border-border/70 bg-muted/40 px-4 py-3">
+              <PermissionPicker
+                permissions={permissions.data?.permissions ?? []}
+                checked={checked}
+                onToggle={(p, next) => setChecked(next ? [...checked, p] : checked.filter((x) => x !== p))}
+              />
             </div>
-            <Button className="h-8 text-xs" onClick={create}>创建角色</Button>
+            <div className="mt-4 flex justify-end">
+              <Button className="h-8 text-xs" onClick={create}>{t("roles.submit")}</Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -822,87 +891,91 @@ export function RolesPage() {
         {roles.isPending ? (
           <div className="flex justify-center py-16"><Spinner /></div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th className={th}>角色</th>
-                <th className={th}>范围</th>
-                <th className={th}>权限点</th>
-                {canManage && <th className={th}>操作</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {(roles.data?.roles || []).map((r) => (
-                <tr key={r.role_id} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
-                  <td className={td}>
-                    <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-muted-foreground">{r.code}</div>
-                  </td>
-                  <td className={td}>
-                    <Badge tone={r.scope === "PLATFORM" ? "primary" : r.scope === "TENANT" ? "warning" : "success"}>
-                      {r.scope === "PLATFORM" ? "平台" : r.scope === "TENANT" ? "租户" : "项目"}
-                    </Badge>
-                  </td>
-                  <td className={td}>
-                    {editing === r.role_id ? (
-                      <div className="max-w-lg">
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          {(permissions.data?.permissions || []).map((p) => (
-                            <label key={p.permission} className="flex items-center gap-1.5 text-xs">
-                              <input
-                                type="checkbox"
-                                checked={editChecked.includes(p.permission)}
-                                onChange={(e) =>
-                                  setEditChecked(
-                                    e.target.checked
-                                      ? [...editChecked, p.permission]
-                                      : editChecked.filter((x) => x !== p.permission),
-                                  )
-                                }
-                              />
-                              {p.permission}
-                            </label>
-                          ))}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button className="h-7 text-xs" onClick={() => savePermissions(r.role_id)}>保存</Button>
-                          <Button variant="secondary" className="h-7 text-xs" onClick={() => setEditing("")}>取消</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {r.permissions.includes("*") ? (
-                          <Badge tone="primary">全部权限</Badge>
-                        ) : r.permissions.length ? (
-                          r.permissions.map((p) => <Badge key={p}>{p}</Badge>)
-                        ) : (
-                          <span className="text-xs text-muted-foreground">无</span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  {canManage && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50 text-left">
+                  <th className={cn(th, "w-44")}>{t("ui:common.role")}</th>
+                  <th className={cn(th, "w-16")}>{t("roles.headerScope")}</th>
+                  <th className={th}>{t("roles.headerPermissions")}</th>
+                  {canManage && <th className={cn(th, "w-44")}>{t("ui:common.actions")}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {(roles.data?.roles || []).map((r) => (
+                  <tr key={r.role_id} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
                     <td className={td}>
-                      {!r.builtin && (
-                        <div className="flex gap-2">
-                          <Button variant="secondary" className="h-7 text-xs"
-                            onClick={() => {
-                              setEditing(editing === r.role_id ? "" : r.role_id);
-                              setEditChecked(r.permissions);
-                            }}>
-                            调整权限
-                          </Button>
-                          <Button variant="destructive" className="h-7 text-xs" onClick={() => remove(r.role_id)}>删除</Button>
+                      <div className="font-medium">{r.name}</div>
+                      <div className="text-xs text-muted-foreground">{r.code}</div>
+                    </td>
+                    <td className={td}>
+                      <Badge tone={r.scope === "PLATFORM" ? "primary" : r.scope === "TENANT" ? "warning" : "success"}>
+                        {r.scope === "PLATFORM" ? t("roles.badgePlatform") : r.scope === "TENANT" ? t("roles.badgeTenant") : t("roles.badgeProject")}
+                      </Badge>
+                    </td>
+                    <td className={cn(td, "min-w-0")}>
+                      {r.permissions.includes("*") ? (
+                        <Badge tone="primary">{t("roles.allPermissions")}</Badge>
+                      ) : r.permissions.length ? (
+                        <div className="flex max-w-3xl flex-wrap gap-1">
+                          {r.permissions.map((p) => <Badge key={p} className="font-mono">{p}</Badge>)}
                         </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{t("ui:common.none")}</span>
                       )}
                     </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    {canManage && (
+                      <td className={td}>
+                        {!r.builtin && (
+                          <div className="flex gap-2">
+                            <Button variant="secondary" className="h-7 text-xs"
+                              onClick={() => {
+                                setEditing(editing === r.role_id ? "" : r.role_id);
+                                setEditChecked(r.permissions);
+                              }}>
+                              {t("roles.editButton")}
+                            </Button>
+                            <Button variant="destructive" className="h-7 text-xs" onClick={() => setConfirmRemove(r)}>
+                              {t("ui:common.delete")}
+                            </Button>
+                          </div>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
+      {editing && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>
+              {t("roles.editTitle", { name: (roles.data?.roles ?? []).find((r) => r.role_id === editing)?.name || editing })}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PermissionPicker
+              permissions={permissions.data?.permissions ?? []}
+              checked={editChecked}
+              onToggle={(p, next) => setEditChecked(next ? [...editChecked, p] : editChecked.filter((x) => x !== p))}
+            />
+            <div className="mt-4 flex gap-2">
+              <Button className="h-8 text-xs" onClick={() => savePermissions(editing)}>{t("ui:common.save")}</Button>
+              <Button variant="secondary" className="h-8 text-xs" onClick={() => setEditing("")}>{t("ui:common.cancel")}</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        title={t("roles.confirmTitle")}
+        description={t("roles.confirmDescription", { name: confirmRemove?.name ?? "", code: confirmRemove?.code ?? "" })}
+        onConfirm={() => confirmRemove && remove(confirmRemove)}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 }

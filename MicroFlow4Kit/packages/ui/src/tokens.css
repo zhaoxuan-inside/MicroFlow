@@ -1,46 +1,58 @@
 /* OpcHub Console design tokens — shadcn-compatible CSS variables.
    Single source shared by all three console SPAs; mirrors the main-app
-   Flutter token names so both runtimes speak one design language. */
+   Flutter token names so both runtimes speak one design language.
+
+   设计语言来源：awesome-design-md（VoltAgent）Vercel 分析（127k★ 仓库）。
+   核心语义：墨色 #171717 是唯一主操作色（所有主按钮黑底白字）；
+   页面体 = canvas-soft #fafafa，卡片纯白；层次靠 1px 发丝边 + 微弱
+   叠加阴影，不用重投影；链接/信息/成功语义共享品牌蓝 #0070f3；
+   技术标签（表头/标识符）用 Geist Mono 大写小字。 */
 :root {
-  --background: oklch(0.99 0.002 250);
-  --foreground: oklch(0.21 0.02 255);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.02 255);
-  --muted: oklch(0.968 0.005 250);
-  --muted-foreground: oklch(0.52 0.015 255);
-  --primary: oklch(0.55 0.16 262);
-  --primary-foreground: oklch(0.985 0.005 250);
-  --accent: oklch(0.94 0.012 255);
-  --accent-foreground: oklch(0.3 0.03 262);
-  --destructive: oklch(0.58 0.2 25);
-  --destructive-foreground: oklch(0.985 0.005 250);
-  --success: oklch(0.62 0.14 155);
-  --warning: oklch(0.72 0.15 75);
-  --border: oklch(0.92 0.005 255);
-  --input: oklch(0.92 0.005 255);
-  --ring: oklch(0.55 0.16 262);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.003 250);
-  --sidebar-foreground: oklch(0.3 0.02 255);
+  color-scheme: light;
+  --background: #fafafa;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --muted: #f5f5f5;
+  --muted-foreground: #666666;
+  --primary: #171717;
+  --primary-foreground: #ffffff;
+  --accent: #f5f5f5;
+  --accent-foreground: #171717;
+  --destructive: #ee0000;
+  --destructive-foreground: #ffffff;
+  --success: #0070f3;
+  --warning: #f5a623;
+  --border: #ebebeb;
+  --input: #ebebeb;
+  --ring: #0070f3;
+  --radius: 0.375rem;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #4d4d4d;
+  --font-sans: "Geist Variable", Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
+/* 暗色优先主题：Linear 级表面阶梯——深画布上的炭色面板 + 发丝边系统，
+   文本四级渐降（#f2f2f2 → #a1a1a1 → #62666d），主按钮反相白色。 */
 .dark {
-  --background: oklch(0.17 0.015 260);
-  --foreground: oklch(0.95 0.005 250);
-  --card: oklch(0.21 0.018 260);
-  --card-foreground: oklch(0.95 0.005 250);
-  --muted: oklch(0.26 0.015 260);
-  --muted-foreground: oklch(0.68 0.012 255);
-  --primary: oklch(0.68 0.15 262);
-  --primary-foreground: oklch(0.16 0.02 262);
-  --accent: oklch(0.28 0.02 262);
-  --accent-foreground: oklch(0.93 0.01 255);
-  --destructive: oklch(0.62 0.19 25);
-  --destructive-foreground: oklch(0.98 0.005 250);
-  --success: oklch(0.7 0.13 155);
-  --warning: oklch(0.78 0.14 75);
-  --border: oklch(0.3 0.015 260);
-  --input: oklch(0.3 0.015 260);
-  --ring: oklch(0.68 0.15 262);
-  --sidebar: oklch(0.19 0.016 260);
-  --sidebar-foreground: oklch(0.9 0.008 255);
+  color-scheme: dark;
+  --background: #09090b;
+  --foreground: #f2f2f2;
+  --card: #111113;
+  --card-foreground: #f2f2f2;
+  --muted: #18181b;
+  --muted-foreground: #a1a1a1;
+  --primary: #f2f2f2;
+  --primary-foreground: #09090b;
+  --accent: #18181b;
+  --accent-foreground: #f2f2f2;
+  --destructive: #ee0000;
+  --destructive-foreground: #ffffff;
+  --success: #0070f3;
+  --warning: #f5a623;
+  --border: #23252a;
+  --input: #2a2c31;
+  --ring: #0070f3;
+  --sidebar: #0c0c0e;
+  --sidebar-foreground: #a1a1a1;
 }
