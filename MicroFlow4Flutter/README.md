@@ -32,12 +32,12 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
 
 | 模块 | 版本 | 公共 API（节选） |
 |---|---|---|
-| microflow_model | 0.5.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract`（含 `telemetry` 注记/`trace` 传播声明）、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFTheme/MFStyleSheet/MFStyleResolver`（§36.3-§36.6）、`MFSelfConstraint/MFConditionalLayout`（§7.2-§7.4）、`MFRecoveryContract`（§16.1）、`MFFinding`（§43.3）、`MFStandardEvents`、`MFDiag/MFCodes/mfDiagnosticRegistry` |
-| microflow_runtime | 0.5.0 | `MFRegistry/MFResourceEntry`、`MFRuntime`（含 `facts` Business Fact 通道、`recovery` 执行器、`debugEvents` 流与检查点、unknown 台账）、`MFValidator/MFValidationResult`（含 findingsReport）、`MFStateStore`、`MFLayoutSolver/staticLayoutChecks`（§7.3/§7.5）、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
+| microflow_model | 0.7.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract`（含 `telemetry` 注记/`trace` 传播声明）、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFTheme/MFStyleSheet/MFStyleResolver`（§36.3-§36.6）、`MFSelfConstraint/MFConditionalLayout`（§7.2-§7.4）、`MFRecoveryContract`（§16.1）、`MFFinding`（§43.3）、`MFStandardEvents`、`MFDiag/MFCodes/mfDiagnosticRegistry` |
+| microflow_runtime | 0.7.0 | `MFRegistry/MFResourceEntry`、`MFRuntime`（含 `facts` Business Fact 通道、`recovery` 执行器、`debugEvents` 流与检查点、unknown 台账）、`MFValidator/MFValidationResult`（含 findingsReport）、`MFStateStore`、`MFLayoutSolver/staticLayoutChecks`（§7.3/§7.5）、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
 | microflow_observability | 0.4.0 | `MFEventEnvelope/MFTelemetryQueue/MFTelemetrySink/MFInMemorySink`、`MFReliableIngest`（§30.1 参考实现）、`MFLocalQueryEngine`（§30.2 五协议）、`MFStandardEvents`、`MFExperimentState/MFExperimentAssignment`、`MFDebugSession/MFDebugSnapshot/MFDebugController` |
-| microflow_renderer_flutter | 0.5.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`（含双层主题切换面）、`mfLocalizePageMessage`（§42.5）、`mfFlutterRendererContract`（§12.1）、`resolveTokenColor` |
+| microflow_renderer_flutter | 0.7.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`（含双层主题切换面）、`mfLocalizePageMessage`（§42.5）、`mfFlutterRendererContract`（§12.1）、`resolveTokenColor` |
 | microflow_authoring | 0.3.0 | `MFAuthoringSession`（`createPage/createPageFromTemplate/connectNavigation/registerFinding/validateProject/inspectImpact/undo`）、`MFCommandResult/MFRevision/MFImpactReport`（§14 命令面） |
-| microflow4_flutter（总包） | 0.7.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配 + themeProvider） |
+| microflow4_flutter（总包） | 0.9.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配 + themeProvider） |
 
 ## 已实现能力（按 §38.2 分级如实声明）
 
@@ -109,8 +109,8 @@ dart tool/baseline_coverage.dart
 | 19 | 不可满足约束产生 mf.layout 静态错误并阻止构建 | 已覆盖 | `基线 19：同轴 fill 与 fixed 并存 → mf.layout.unsatisfiable；fixed 超出可用空间` |
 | 20 | 条件布局命中声明方案；全不命中且无默认方案是静态错误 | 已覆盖 | `基线 20：条件布局确定命中与默认方案；重复选择器 → ambiguous-scheme` |
 | 21 | 平台不支持已引用布局能力时按声明降级并产生诊断 | 已覆盖 | `基线 21：平台不支持能力需声明降级；声明后运行期记录不静默` |
-| 22 | 动效只出现在已声明动效面；动效值只解析到 motion Token | 部分覆盖 | `基线 22（部分）：样式片值只解析到 token，字面量静态拒绝（§36.4；§36.5 动效面未覆盖）` |
-| 23 | 减少动效偏好命中替代组时应用替代 Token 并记录 | 未覆盖 | — |
+| 22 | 动效只出现在已声明动效面；动效值只解析到 motion Token | 已覆盖 | `基线 22（静态面）：样式片值只解析到 token，字面量静态拒绝（§36.4）`<br>`基线 22：motion token 解析——duration/curve 四点成形，值只解析到 token`<br>`基线 22：形状不符的 motion token 是静态错误（mf.motion.token-invalid）`<br>`基线 22：未声明动效面的入场请求被拒绝并记录；已声明面正常生效` |
+| 23 | 减少动效偏好命中替代组时应用替代 Token 并记录 | 已覆盖 | `基线 23：resolveMotion 命中 .reduced 替代组——替代 Token 应用 + viaAlternative 标记`<br>`基线 23：悬空替代组（缺同名基础 token）是静态错误（mf.motion.alternative-dangling）`<br>`基线 23：替代组命中经由渲染通道记录（mf.motion.alternative-applied）` |
 | 24 | 性能预算超标时发布门禁失败并产生 mf.perf 诊断 | 未覆盖 | — |
 | 25 | 增量构建不重新生成无关页面，增量与全量产物一致 | 未覆盖 | — |
 | 26 | 绑定重复触发按声明并发策略执行；未声明拒绝重复触发 | 已覆盖 | `未声明并发策略的绑定是静态错误（基线 26）` |
@@ -121,7 +121,7 @@ dart tool/baseline_coverage.dart
 | 31 | 三平面分离：内联可执行逻辑、配置携带代码/未验证数据、运行数据回写模型均被拒绝 | 部分覆盖 | `结构树属性内联可执行逻辑是静态错误（基线 31 部分）` |
 | 32 | 受控交叉：未登记入受控交叉清单的改写面被静态拒绝；已登记面随实例冻结 | 部分覆盖 | `受控交叉清单外的变体改写面被静态拒绝（基线 32 部分）` |
 
-覆盖汇总：21/32 条已覆盖，5 条部分覆盖（生成工具：`dart run tool/baseline_coverage.dart`，勿手工编辑本表）。
+覆盖汇总：23/32 条已覆盖，4 条部分覆盖（生成工具：`dart run tool/baseline_coverage.dart`，勿手工编辑本表）。
 
 ## 集成与使用
 

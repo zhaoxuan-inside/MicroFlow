@@ -60,14 +60,14 @@ packages:
       path: "../microflow_model"
       relative: true
     source: path
-    version: "0.6.0"
+    version: "0.7.0"
   microflow_runtime:
     dependency: "direct main"
     description:
       path: "../microflow_runtime"
       relative: true
     source: path
-    version: "0.6.0"
+    version: "0.7.0"
   sky_engine:
     dependency: transitive
     description: flutter

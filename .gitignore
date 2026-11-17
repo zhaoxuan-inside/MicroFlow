@@ -13,3 +13,10 @@ dist/
 # Node / console 支撑平台
 node_modules/
 tsconfig.tsbuildinfo
+
+# ZCode 会话本地产物（非项目源码）
+.zcode/
+
+# 运行时数据（代码/配置/数据三分离：数据不入库）
+*.sqlite
+data/

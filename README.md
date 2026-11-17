@@ -40,7 +40,7 @@ MicroFlow 是面向 VibeCoding 开发方式（AI 结对编程）的业务框架�
 ## 三、核心设计思想
 
 1. **算子与编排分离**。业务步骤实现为契约明确、副作用如实声明、边界固定的算子；业务功能由编排配置组织算子而成。
-2. **编排配置即数据，表达力刻意做小**。标准 JSON + 版本化 Schema；发布前静态检查（环/引用/路径/类型/策略组合），未知规则一律拒绝；表达式为受限白名单，禁止 eval——配置永远不朝图灵完备漂移，表达不了的逻辑答案是"新增算子"。
+2. **编排配置即数据，表达力刻意做小**。Python 后端支持声明式 DSL 和兼容的 JSON，均编译为相同流程模型并使用版本化 Schema；发布前静态检查（环/引用/路径/类型/策略组合），未知规则一律拒绝；表达式为受限白名单，禁止 eval——配置永远不朝图灵完备漂移，表达不了的逻辑答案是"新增算子"。
 3. **层次分解**。子图与算子遵守同一契约纪律（端口、错误语义、版本、独立测试），以复合算子身份参与编排；接口预算（建议 ≤8 端口）、目录可读性、引用而非复制。
 4. **观测分层**。框架在运行时拦截边界零埋点产生结构化事实/指标/日志；汇聚、查询、看板、告警由上层承载。事件 Schema 与算子契约同为版本化契约；关键业务事件走独立可靠协议。
 5. **零依赖内核与端口注入**。框架核心只依赖语言标准库（Python 侧经独立安装验证）；持久化、遥测接收、授权、事件投递以端口接口由宿主注入，能力不足时显式拒绝而非静默降级。零依赖 = AI 面对封闭可读的 API 面，直击幻觉最严重的区域。
@@ -51,11 +51,11 @@ MicroFlow 是面向 VibeCoding 开发方式（AI 结对编程）的业务框架�
 
 ```text
 算子实现（六参数契约、副作用声明） ─┐
-编排配置（JSON / 版本化 Schema）  ─┤
+编排配置（DSL 或 JSON / 版本化 Schema）  ─┤
                                  ▼
         编译与静态检查（环/引用/路径/类型/策略组合）  ←─ 变更影响 = 静态反向索引
                                  ▼
-                  不可变发布快照（release_id 固定全部版本）
+                  不可变发布快照（release_id 固定全部版本；T12 切片：内容寻址落库/装载）
                                  ▼
  执行层（调度/执行/熔断/恢复） ⇄ 状态协调（原子 StateBatch） ──▶ [端口] 持久化提供者（宿主注入）
                                  │
@@ -66,6 +66,9 @@ MicroFlow 是面向 VibeCoding 开发方式（AI 结对编程）的业务框架�
 前端：项目模型（页面/绑定/样式/导航，纯配置） ──▶ 解释运行时 + Tier A/B 元组件
         ▲ 结构化命令面（create_page/…，逐命令过门禁、留审计）      │
         └── 上层工具/AI ＜──── 零埋点运营事件 ──── 遥测接收（业务层承载）
+
+VibeCoding 工具接入：[MCP 桥] CLI 12 命令 → MCP 工具（框架外适配层，零依赖 stdio）
+支撑平台：编排管理（控制面承载）· 运维（含告警中心）· 运营 ── MicroFlow4Kit 共享底座
 ```
 
 ## 五、实现的设计（设计基线摘要）
@@ -82,7 +85,7 @@ MicroFlow 是面向 VibeCoding 开发方式（AI 结对编程）的业务框架�
 
 **策略与执行**：执行属性（同步/异步、缓存、幂等、恢复、超时、重试）全部配置化，四层合并（框架默认→算子默认→节点→白名单覆盖）后冻结为 EffectiveOperatorPolicy 并计算摘要；调用成功 ≠ 业务成功；等待超时不取消已接纳业务；根预算、队列/尝试预算原子记录，迟到成功不推进后继。
 
-**状态与恢复**：所有权威变化经 StateStore 以 StateBatch 原子提交（结果、后继就绪、闩锁、幂等记录、事件意图同批）；revision/epoch/owner 校验，提交未知按原 request_id 查询；恢复保留业务身份，旧拥有者被隔离（IN_DOUBT），未知副作用需宿主授权+证据确认；资源租约带世代 fencing。不承诺全局恰好一次——框架不把状态介质与任意外部资源伪装成天然原子。
+**状态与恢复**：所有权威变化经 StateStore 以 StateBatch 原子提交（结果、后继就绪、闩锁、幂等记录、事件意图同批）；revision/epoch/owner 校验，提交未知按原 request_id 查询；恢复保留业务身份，旧拥有者被隔离（IN_DOUBT），未知副作用需宿主授权+证据确认，纯/读尝试由接管者经 `recover` 自动重派（幂等身份废弃重建，迟到提交被 fencing 拒绝）；资源租约带世代 fencing。不承诺全局恰好一次——框架不把状态介质与任意外部资源伪装成天然原子。
 
 **幂等与缓存**：业务幂等键 = 租户+域+操作+稳定业务键（独立于缓存，禁止 LRU 淘汰业务身份）；同键异摘要冲突，同键复用已确认结果；缓存默认关闭、仅纯计算、键含全量隔离维度、single-flight 协调。
 
@@ -116,16 +119,25 @@ MicroFlow 是面向 VibeCoding 开发方式（AI 结对编程）的业务框架�
 
 ### 5.4 实现状态（如实声明）
 
-- **MicroFlow4Python**（240 项测试）：T01 包入口 / T02 契约 SDK / T05 本地同步执行 / T03·T04 编译与策略主体——完成；T06 本地闭环、T07 原子状态、T08 调度执行、T09 幂等确认、T10 事件意图——协议切片通过（内存替身）；本地运行时另已实现 **operator 节点条件执行**（`condition` + `truthy`/`exists` 谓词，跳过不失败流程，编译期数据依赖照常判环）与**受控 write 算子**（`LocalRuntime(allow_write=True)` 显式放行，每次写入产出 `write_effect_invoked` 审计记录；调度执行仍拒绝 write，等待确认协议）；**T11～T16（动态节点执行、完整发布回退、缓存接入、运维控制、运行利用分析、最终验收）未开始**。CLI 10/17 已实现。
-- **MicroFlow4Flutter**（总包 64 项 + 各包测试）：Level 0（模型/契约/校验/i18n/Token/主题/布局静态面）与 Level 1（解释运行时/Tier A+B 渲染/覆盖链）**已实现**；Level 2 协议面部分实现（遥测/实验/Debug/Fact/Recovery/Ingest/Query 参考实现）；阶段六最小命令闭环已实现；基线覆盖 21/32（另 5 条部分）；**未实现**：编译模式产物、发布快照构建器与性能门禁、增量构建、运行期注入通道。
+- **MicroFlow4Python**（299 项测试）：T01 包入口 / T02 契约 SDK / T05 本地同步执行 / T03·T04 编译与策略主体——完成；T06 本地闭环；T07 原子状态、T08 调度执行——协议切片通过，并已接入项目内持久化子模块（默认 memory，内置 SQLite 单机耐久提供者，经同一提供者契约测试套件与跨进程 fencing/重启恢复验证）与**失联自动重派**（`recover`：被 fence 旧 owner 的纯/读 CLAIMED 节点由泵循环自动重派，写入型保留手动确认）；T09 幂等确认、T10 事件意图——协议切片通过（内存替身）；本地运行时另已实现 **operator 节点条件执行**与**受控 write 算子**；**T12 切片已落地**：`releases.publish`/`load_release` 内容寻址发布落库与按 release_id 装载（跨机器物化与介质迁移未开始）；**VibeCoding 接入切片已落地**：`context`（算子局部上下文）与 `scaffold`（算子/流程候选骨架生成）CLI 命令 + `platform_graph`（编排平台画布图 → flow 骨架转换，显式限制与诊断）；熔断语义分离：节点级 `UNHANDLED_OPERATOR_EXCEPTION`、运行级闩锁 `CIRCUIT_BROKEN`（已入诊断码目录）；**T11～T13、T14～T16（动态节点执行、缓存接入、运维控制、运行利用分析、最终验收）未开始**。CLI 12/17 已实现。
+- **MicroFlow4Flutter**（总包 64 项 + 各包测试）：Level 0（模型/契约/校验/i18n/Token/主题/布局静态面）与 Level 1（解释运行时/Tier A+B 渲染/覆盖链）**已实现**；Level 2 协议面部分实现（遥测/实验/Debug/Fact/Recovery/Ingest/Query 参考实现）；阶段六最小命令闭环已实现；基线覆盖 23/32（另 4 条部分）；**未实现**：编译模式产物、发布快照构建器与性能门禁、增量构建、运行期注入通道。
+- **支撑平台**（Orchestration/Ops/Bizops + Kit，2026-11 收口）：编排管理平台迁移到**自有控制面**（FastAPI `:8200` + PostgreSQL，独立账号/锁/E2E 阶段门禁/第二人审批/回滚指针 env_current）——实验域、配置中心（灰度）、告警最小闭环（规则求值挂接 debug I/O 上报与场景执行）由控制面承载；运维平台新增告警中心页；`config_hash` 为 SHA-256 内容寻址。哈希/审批/回滚语义见 `MicroFlow4Kit/HOST_CONTRACT.md`。集成测试需 PostgreSQL（缺失时显式跳过）。
+- **VibeCoding 工具接入**（`MicroFlow4MCP`）：CLI 全部 12 命令经零依赖 stdio MCP 服务器暴露为工具（capabilities/check/run/context/scaffold 等），协议适配在框架外，内核不感知 MCP。
 - 两侧共同边界：写入型算子与真实介质验证未开放；内存替身只验证协议。
 
 ## 六、语言实现与手册
 
-| 子项目 | 定位 | 手册 | 端到端示例 |
-|---|---|---|---|
-| [MicroFlow4Python](MicroFlow4Python/README.md) | 后端执行框架：契约算子、静态编译、状态协调协议；零三方依赖 | [开发手册](MicroFlow4Python/DEVELOPER_GUIDE.md) | [README「集成与使用」](MicroFlow4Python/README.md)（四步接入 + CLI 回路） |
-| [MicroFlow4Flutter](MicroFlow4Flutter/README.md) | 前端框架：统一资源注册、解释运行时、Tier A/B 渲染、命令面 | [开发手册](MicroFlow4Flutter/DEVELOPER_GUIDE.md) | [README「集成与使用」](MicroFlow4Flutter/README.md)（五步接入 + 命令面） |
+| 子项目 | 定位 | 手册 |
+|---|---|---|
+| [MicroFlow4Python](MicroFlow4Python/README.md) | 后端执行框架：契约算子、静态编译、状态协调协议；零三方依赖 | [开发手册](MicroFlow4Python/DEVELOPER_GUIDE.md) |
+| [MicroFlow4Flutter](MicroFlow4Flutter/README.md) | 前端框架：统一资源注册、解释运行时、Tier A/B 渲染、命令面 | [开发手册](MicroFlow4Flutter/DEVELOPER_GUIDE.md) |
+| [MicroFlow4MCP](MicroFlow4MCP/README.md) | **VibeCoding 工具接入桥**：CLI 12 命令 → MCP 工具（零依赖 stdio，框架外适配层） | README（接入配置） |
+| [MicroFlow4Orchestration](MicroFlow4Orchestration/README.md) | 编排管理平台：三层资产目录全生命周期 + 自有控制面（审批/回滚/实验/配置中心/告警求值） | AGENTS.md（架构事实） |
+| [MicroFlow4Ops](MicroFlow4Ops/README.md) | 运维平台：运行瀑布/指标看板/审计/调试工作台/**告警中心** | AGENTS.md |
+| [MicroFlow4Bizops](MicroFlow4Bizops/README.md) | 运营平台：KPI/趋势/漏斗/留存/实验读出（口径诚实披露） | AGENTS.md |
+| [MicroFlow4Kit](MicroFlow4Kit/README.md) | 支撑平台共享底座（ui/api/admin 三包）；[宿主契约](MicroFlow4Kit/HOST_CONTRACT.md) | AGENTS.md |
+
+各子项目根目录均有 `AGENTS.md`（VibeCoding 工具纪律速查）；仓库根 [AGENTS.md](AGENTS.md) 是工具开发的统一入口（纪律 + 读序 + 开发回路 + MCP 用法）。
 
 系列分享文章：[articles/](articles/README.md)（① 愿景与设计思想 ② Python 使用 ③ Flutter 使用）。
 

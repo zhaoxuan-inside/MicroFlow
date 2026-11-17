@@ -24,6 +24,15 @@
 `page:ops_console/page:bizops_console`。scope 语义：PLATFORM 全局 / TENANT 租户内 / PROJECT 项目内；
 活动环境 `staging/online` 为保护级（发布/回滚要求项目所有者角色）。
 
+## 控制面承载能力（编排控制面 `/api/*`，非宿主 dispatch）
+
+编排管理平台已自带独立控制面（FastAPI `:8200`，独立账号体系与 `orch_control` 库），以下能力不再依赖宿主：
+目录/生命周期/审批/回滚（`orchestration.*` 对应的 REST 路由）、**A/B 实验域**（`/api/experiments*`）、
+**配置中心灰度**（`/api/configcenter/*`）、**告警最小闭环**（`/api/alerts`、`/api/alerts/{id}/ack`、
+`/api/alerts/rules*`，规则求值挂接容器 debug I/O 上报与场景执行结果；Ops 平台"告警中心"页经 `/orch-api`
+代理消费，权限点 `ops:alerts`）。T12 对齐：下发哈希为 SHA-256 规范化 JSON（`config_hash`），并携带
+`flow_digest`（宿主装有 microflow 时经 `microflow.platform_graph` 转换的平台图 → flow 骨架摘要）。
+
 ## 路线衔接
 
 漏斗时序归因与运行时多环境拓扑随框架 T14 控制面 / T15 运行分析落地；Flutter 侧遥测查询协议见 §30.2。
