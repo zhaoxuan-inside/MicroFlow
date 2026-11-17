@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "microflow-mcp"
+version = "0.1.0"
+description = "MCP tool-server bridge wrapping the MicroFlow CLI for VibeCoding tools"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = []
+
+[project.scripts]
+microflow-mcp = "microflow_mcp.tools:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
