@@ -1,3 +1,17 @@
+## 0.10.0
+
+布局能力扩展——由承载应用「像个网站」的最小页面容器诉求驱动：
+* **Stack padding/maxWidth（renderer 0.8.0）**：`padding` 四边内边距 prop；
+  垂直容器 `maxWidth` 限宽 + 水平居中（经典页面容器语义）——与 Scroll/根
+  expand 组合行为保持：外层撑满、内容按最大宽度居中。
+* **Text size/weight**：排版层次 prop（页面标题/正文），weight 100–900 映射
+  FontWeight，越界夹紧。
+* 承载应用（habit_tracker/habit_admin）页面容器接入：padding 24、限宽
+  720/860、标题 22/w700；AppBar 品牌标题（0.9.x 补丁轮次引入的 MFBrandMark）
+  保持为唯一品牌位。
+* 测试：test/framework_v100_layout_test.dart（3 用例：留白/限宽居中对称性/
+  排版判据）；全仓用例全绿 + analyze 0 issues。
+
 ## 0.9.0
 
 动效面（§36.5/§36.7）落地——由宿主产品「按前端开发框架补齐缺口」驱动：

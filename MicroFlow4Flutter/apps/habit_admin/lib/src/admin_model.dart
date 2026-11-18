@@ -166,9 +166,9 @@ MFProject buildAdminProject() {
         tree: MFNode(
           id: 'root',
           type: 'Stack',
-          props: const {'expand': true},
+          props: const {'expand': true, 'padding': 24, 'gap': 14, 'maxWidth': 860},
           children: [
-            MFNode(id: 'title', type: 'Text', props: {'text': '习惯打卡 · 运营管理'}, style: 'style-title'),
+            MFNode(id: 'title', type: 'Text', props: const {'text': '习惯打卡 · 运营管理', 'size': 22, 'weight': 700}, style: 'style-title'),
             MFNode(id: 'total', type: 'Text', props: {'text': MFRef('state.totalLabel')}),
             MFNode(
               id: 'metrics',
@@ -228,9 +228,9 @@ MFProject buildAdminProject() {
         tree: MFNode(
           id: 'root',
           type: 'Stack',
-          props: const {'expand': true},
+          props: const {'expand': true, 'padding': 24, 'gap': 14, 'maxWidth': 860},
           children: [
-            MFNode(id: 'title', type: 'Text', props: {'text': '事件明细与追踪'}, style: 'style-title'),
+            MFNode(id: 'title', type: 'Text', props: const {'text': '事件明细与追踪', 'size': 22, 'weight': 700}, style: 'style-title'),
             MFNode(id: 'events-hint', type: 'Text', props: {'text': MFRef('state.eventsHint')}),
             MFNode(
               id: 'trace-row',
@@ -293,9 +293,9 @@ MFProject buildAdminProject() {
         tree: MFNode(
           id: 'root',
           type: 'Stack',
-          props: const {'expand': true},
+          props: const {'expand': true, 'padding': 24, 'gap': 14, 'maxWidth': 860},
           children: [
-            MFNode(id: 'title', type: 'Text', props: {'text': '数据质量'}, style: 'style-title'),
+            MFNode(id: 'title', type: 'Text', props: const {'text': '数据质量', 'size': 22, 'weight': 700}, style: 'style-title'),
             MFNode(
               id: 'quality-list',
               type: 'List',

@@ -35,9 +35,9 @@ microflow4_flutter/            总包：装配 + 再导出（MicroFlowFramework.
 | microflow_model | 0.7.0 | `MFProject/MFManifest/MFPage/MFNode`、`ComponentContract`（含 `telemetry` 注记/`trace` 传播声明）、`MFBindingMap/MFExpr/MFAction`、`MFI18nCatalog`、`MFTokenSet`、`MFTheme/MFStyleSheet/MFStyleResolver`（§36.3-§36.6）、`MFSelfConstraint/MFConditionalLayout`（§7.2-§7.4）、`MFRecoveryContract`（§16.1）、`MFFinding`（§43.3）、`MFStandardEvents`、`MFDiag/MFCodes/mfDiagnosticRegistry` |
 | microflow_runtime | 0.7.0 | `MFRegistry/MFResourceEntry`、`MFRuntime`（含 `facts` Business Fact 通道、`recovery` 执行器、`debugEvents` 流与检查点、unknown 台账）、`MFValidator/MFValidationResult`（含 findingsReport）、`MFStateStore`、`MFLayoutSolver/staticLayoutChecks`（§7.3/§7.5）、`MFEmissionSink`、`MFExprEvaluator`、`MFBoundaryHandler` |
 | microflow_observability | 0.4.0 | `MFEventEnvelope/MFTelemetryQueue/MFTelemetrySink/MFInMemorySink`、`MFReliableIngest`（§30.1 参考实现）、`MFLocalQueryEngine`（§30.2 五协议）、`MFStandardEvents`、`MFExperimentState/MFExperimentAssignment`、`MFDebugSession/MFDebugSnapshot/MFDebugController` |
-| microflow_renderer_flutter | 0.7.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`（含双层主题切换面）、`mfLocalizePageMessage`（§42.5）、`mfFlutterRendererContract`（§12.1）、`resolveTokenColor` |
+| microflow_renderer_flutter | 0.8.0 | `MFPrimitiveTable/MFTierA/MFInterpreter`、`MicroFlowApp`（含双层主题切换面）、`mfLocalizePageMessage`（§42.5）、`mfFlutterRendererContract`（§12.1）、`resolveTokenColor` |
 | microflow_authoring | 0.3.0 | `MFAuthoringSession`（`createPage/createPageFromTemplate/connectNavigation/registerFinding/validateProject/inspectImpact/undo`）、`MFCommandResult/MFRevision/MFImpactReport`（§14 命令面） |
-| microflow4_flutter（总包） | 0.9.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配 + themeProvider） |
+| microflow4_flutter（总包） | 0.10.0 | 上述全部再导出 + `MicroFlowFramework.create`（校验门禁 + 装配 + themeProvider） |
 
 ## 已实现能力（按 §38.2 分级如实声明）
 

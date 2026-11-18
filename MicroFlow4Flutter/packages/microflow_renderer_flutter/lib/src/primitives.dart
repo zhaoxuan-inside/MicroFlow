@@ -89,17 +89,38 @@ class MFPrimitiveTable {
   Map<String, MFPrimitiveBuilder> get builders => _builders;
 
   final Map<String, MFPrimitiveBuilder> _builders = {
-    'Text': (ctx, view) => Text(
-          (ctx.props['text'] as String?) ?? '',
-          style: ctx.props['foreground'] is String
-              ? TextStyle(color: resolveTokenColor(ctx.props['foreground']))
-              : null,
-          textAlign: switch (ctx.props['align']) {
-            'center' => TextAlign.center,
-            'end' => TextAlign.end,
-            _ => TextAlign.start,
-          },
-        ),
+    'Text': (ctx, view) {
+      // 0.10.0：size/weight 排版 prop（页面标题/正文层次的最小表达面）；
+      // foreground 语义不变（style 片或 props 里的 token 引用已解析为色值）。
+      final color = ctx.props['foreground'] is String
+          ? TextStyle(color: resolveTokenColor(ctx.props['foreground']))
+          : null;
+      final size = (ctx.props['size'] as num?)?.toDouble();
+      final weightValue = (ctx.props['weight'] as num?)?.toInt();
+      final typography = (size != null || weightValue != null)
+          ? TextStyle(
+              fontSize: size,
+              fontWeight: weightValue == null
+                  ? null
+                  : FontWeight.values[((weightValue.clamp(100, 900)) ~/ 100) - 1],
+            )
+          : null;
+      final merged = (color ?? typography) == null
+          ? null
+          : (color ?? const TextStyle()).copyWith(
+              fontSize: typography?.fontSize,
+              fontWeight: typography?.fontWeight,
+            );
+      return Text(
+        (ctx.props['text'] as String?) ?? '',
+        style: merged,
+        textAlign: switch (ctx.props['align']) {
+          'center' => TextAlign.center,
+          'end' => TextAlign.end,
+          _ => TextAlign.start,
+        },
+      );
+    },
     'Icon': (ctx, view) => Icon(
           _iconOf(ctx.props['name'] as String?),
           size: (ctx.props['size'] as num?)?.toDouble(),
@@ -172,22 +193,41 @@ class MFPrimitiveTable {
       }
 
       final children = [for (var i = 0; i < view.children.length; i++) wrap(i, view.children[i])];
+      Widget content;
       if (direction == Axis.horizontal) {
-        return Row(
+        content = Row(
           spacing: gap,
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: mainAlignOf(ctx.props['align'] as String?),
           crossAxisAlignment: crossAlignOf(ctx.props['crossAlign'] as String?),
           children: children,
         );
+      } else {
+        content = Column(
+          spacing: gap,
+          mainAxisSize: ctx.props['expand'] == true ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment: mainAlignOf(ctx.props['align'] as String?),
+          crossAxisAlignment: crossAlignOf(ctx.props['crossAlign'] as String?),
+          children: children,
+        );
       }
-      return Column(
-        spacing: gap,
-        mainAxisSize: ctx.props['expand'] == true ? MainAxisSize.max : MainAxisSize.min,
-        mainAxisAlignment: mainAlignOf(ctx.props['align'] as String?),
-        crossAxisAlignment: crossAlignOf(ctx.props['crossAlign'] as String?),
-        children: children,
-      );
+      // 0.10.0：padding 数值 prop——四边内边距（页面容器的最小留白语义）。
+      final padding = (ctx.props['padding'] as num?)?.toDouble();
+      if (padding != null && padding > 0) {
+        content = Padding(padding: EdgeInsets.all(padding), child: content);
+      }
+      // 0.10.0：maxWidth 数值 prop——垂直容器限宽 + 水平居中（经典页面容器），
+      // 与 Scroll/根 expand 组合时行为保持：外层撑满，内容按最大宽度居中。
+      final maxWidth = (ctx.props['maxWidth'] as num?)?.toDouble();
+      if (maxWidth != null && maxWidth > 0 && direction == Axis.vertical) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: content,
+          ),
+        );
+      }
+      return content;
     },
     'Tabs': (ctx, view) {
       final labels = [for (final l in (ctx.props['labels'] as List? ?? const [])) '$l'];

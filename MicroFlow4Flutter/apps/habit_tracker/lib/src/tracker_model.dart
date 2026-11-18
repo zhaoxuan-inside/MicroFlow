@@ -160,9 +160,10 @@ MFProject buildTrackerProject() {
         tree: MFNode(
           id: 'root',
           type: 'Stack',
-          props: const {'expand': true},
+          props: const {'expand': true, 'padding': 24, 'gap': 14, 'maxWidth': 720},
           children: [
-            MFNode(id: 'title', type: 'Text', t: 'habits.title', style: 'style-title'),
+            MFNode(id: 'title', type: 'Text', t: 'habits.title', style: 'style-title',
+              props: const {'size': 22, 'weight': 700}),
             MFNode(id: 'today', type: 'Text', props: {'text': MFRef('state.todayLabel')}),
             MFNode(
               id: 'habit-list',
@@ -231,9 +232,10 @@ MFProject buildTrackerProject() {
         tree: MFNode(
           id: 'root',
           type: 'Stack',
-          props: const {'expand': true},
+          props: const {'expand': true, 'padding': 24, 'gap': 14, 'maxWidth': 720},
           children: [
-            MFNode(id: 'title', type: 'Text', t: 'stats.title', style: 'style-title'),
+            MFNode(id: 'title', type: 'Text', t: 'stats.title', style: 'style-title',
+              props: const {'size': 22, 'weight': 700}),
             MFNode(
               id: 'stat-list',
               type: 'List',
