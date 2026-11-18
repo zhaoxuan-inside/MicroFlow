@@ -30,15 +30,7 @@
     "seriesAudit": "Audit events",
     "seriesActors": "Active actors",
     "seriesRuns": "Scenario runs",
-    "seriesDenied": "Denied",
-    "entity_user_account": "Registered users",
-    "entity_forum_thread": "Forum threads",
-    "entity_product_item": "Showcase items",
-    "entity_demands_item": "Demands",
-    "entity_policy_item": "Policies",
-    "entity_perk_item": "Perks",
-    "entity_sop_template": "SOP templates",
-    "entity_interaction_record": "Interactions"
+    "seriesDenied": "Denied"
   },
   "funnel": {
     "description": "Distinct actors per step action and first-step conversion (footprint-deduplicated, not strictly ordered)",

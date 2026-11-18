@@ -6,7 +6,7 @@
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env || {};
 
 export const host = {
-  /** 统一网关分发端点（中性默认；OpcHub 宿主同为 /api/v1/dispatch） */
+  /** 统一网关分发端点（中性默认，部署方网关按契约对齐） */
   endpoint: env.VITE_CONSOLE_ENDPOINT || "/api/v1/dispatch",
   /** 会话令牌 localStorage 键（与宿主主站同源共享时覆盖） */
   tokenKey: env.VITE_CONSOLE_TOKEN_KEY || "mf_console_token",

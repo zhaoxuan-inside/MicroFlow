@@ -1,6 +1,6 @@
 # 宿主契约（Host Contract）—— 支撑平台对宿主的全部依赖面
 
-支撑平台与具体业务项目无关；以下能力由宿主（如 OpcHub）按契约实现。协议：POST 单分发端点
+支撑平台与具体业务项目无关；以下能力由宿主（部署方网关）按契约实现。协议：POST 单分发端点
 （默认 `/api/v1/dispatch`），载荷 `{scenario, version, payload, context:{token, tenant_id?, project_id?, env_key?}}`，
 信封 `{code, data, message, trace_id}`（200/201 为成功）；身份来自 `Authorization: Bearer` 或 `context.token`，
 `context.user_id` 不被信任。

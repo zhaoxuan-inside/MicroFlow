@@ -30,15 +30,7 @@
     "seriesAudit": "审计事件",
     "seriesActors": "活跃操作者",
     "seriesRuns": "场景运行",
-    "seriesDenied": "拒绝",
-    "entity_user_account": "在册用户",
-    "entity_forum_thread": "论坛主题",
-    "entity_product_item": "产品橱窗",
-    "entity_demands_item": "需求",
-    "entity_policy_item": "政策",
-    "entity_perk_item": "权益",
-    "entity_sop_template": "SOP 模板",
-    "entity_interaction_record": "互动记录"
+    "seriesDenied": "拒绝"
   },
   "funnel": {
     "description": "按步骤动作统计去重操作者与首步转化（口径：足迹去重，非严格时序）",

@@ -1,18 +1,6 @@
 /** 运营总览：真实 KPI（实体在册量/近 24h 场景运行）+ 按日趋势（审计足迹 + 运行记录）。 */
 import { useQuery } from "@tanstack/react-query";
-import { entityLabelKey } from "../lib/entities";
 
-/** 实体名 → 文案键（bizops.entity_*）。 */
-const ENTITY_LABELS: Record<string, string> = {
-  "user.account": "entity_user_account",
-  "forum.thread": "entity_forum_thread",
-  "product.item": "entity_product_item",
-  "demands.item": "entity_demands_item",
-  "policy.item": "entity_policy_item",
-  "perk.item": "entity_perk_item",
-  "sop.template": "entity_sop_template",
-  "interaction.record": "entity_interaction_record",
-};
 import { useTranslation } from "react-i18next";
 import {
   CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -29,9 +17,6 @@ interface Trend {
   sample_size: number;
   note: string;
 }
-
-/** 实体名 → 文案键（bizops.entity_*）；未登记实体如实回退显示原名。 */
-
 
 export function OverviewPage() {
   const { t } = useTranslation("bizops");
@@ -80,7 +65,7 @@ export function OverviewPage() {
               <Card key={name}>
                 <CardHeader>
                   <CardTitle className="text-muted-foreground">
-                    {entityLabelKey(name, ENTITY_LABELS) !== name ? t(`overview.${entityLabelKey(name, ENTITY_LABELS)}`) : name}
+                    {name}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

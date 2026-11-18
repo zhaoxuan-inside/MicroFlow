@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 class MFBrandMark extends StatelessWidget {
   const MFBrandMark({super.key, this.appName, this.compact = false});
 
-  /// 应用名（如「习惯打卡」），弱化色后缀；空则只显示框架词标。
+  /// 应用名（宿主装配传入，如「运营工作台」），弱化色后缀；空则只显示框架词标。
   final String? appName;
 
   /// AppBar 紧凑档（徽标 26px / 词标 14px）；false 为展示档。

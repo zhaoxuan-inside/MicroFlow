@@ -13,20 +13,20 @@ import 'package:microflow4_flutter/microflow4_flutter.dart';
 void main() {
   group('表达式与执行上下文', () {
     test('item 作用域求值与 prev 深路径', () {
-      final store = MFStateStore()..write('page', 'habits', [
-            {'id': 'h1', 'name': '晨跑'},
+      final store = MFStateStore()..write('page', 'items', [
+            {'id': 'h1', 'name': '任务A'},
           ]);
       final ctx = EvalContext(
         state: store,
-        prev: {'as:stats': {'total': 7, 'ranking': [{'name': '晨跑'}]}},
-        item: {'id': 'h1', 'name': '晨跑', 'streak': 3},
+        prev: {'as:stats': {'total': 7, 'ranking': [{'name': '任务A'}]}},
+        item: {'id': 'h1', 'name': '任务A', 'streak': 3},
       );
       const ev = MFExprEvaluator();
-      expect(ev.eval(const MFRef('item.name'), ctx), '晨跑');
+      expect(ev.eval(const MFRef('item.name'), ctx), '任务A');
       expect(ev.eval(const MFRef('item.streak'), ctx), 3);
       expect(ev.eval(const MFRef('item.missing.deep'), ctx), isNull);
       expect(ev.eval(const MFRef('prev.stats.total'), ctx), 7);
-      expect(ev.eval(const MFRef('prev.stats.ranking.0.name'), ctx), '晨跑');
+      expect(ev.eval(const MFRef('prev.stats.ranking.0.name'), ctx), '任务A');
       expect(ev.eval(const MFRef('prev.stats.absent'), ctx), isNull);
       expect(ev.eval(const MFRef('prev.stats'), ctx), isA<Map>());
     });
@@ -96,25 +96,25 @@ void main() {
         emissionSink: MFNullEmissionSink(),
       );
       await runtime.start();
-      await runtime.dispatchEvent('name-input', 'change', payload: {'value': '晨跑'});
-      expect(runtime.state.peek('page', 'draft'), '晨跑', reason: '载荷经 prop.value 进入动作链');
+      await runtime.dispatchEvent('name-input', 'change', payload: {'value': '任务A'});
+      expect(runtime.state.peek('page', 'draft'), '任务A', reason: '载荷经 prop.value 进入动作链');
 
       // 契约声明 TString，分发布尔值 → mf.reg.contract-mismatch + 错误边界。
       await runtime.dispatchEvent('name-input', 'change', payload: {'value': false});
       expect(runtime.diagnostics.any((d) => d.code == MFCodes.regContractMismatch), isTrue);
       expect(runtime.boundaryHandler.captured, isNotEmpty);
-      expect(runtime.state.peek('page', 'draft'), '晨跑', reason: '违例分发不执行绑定');
+      expect(runtime.state.peek('page', 'draft'), '任务A', reason: '违例分发不执行绑定');
     });
   });
 
   group('信封恢复与查询维度', () {
     test('fromJson 保留 event_id 与 occurred_at；分组支持 session_id 与 payload.*', () {
       final original = MFEventEnvelope(
-        eventName: 'ops.habit.checked-in',
+        eventName: 'ops.item.checked-in',
         payload: const {'id': 'h1'},
         sessionId: 'ses-1',
         pageInstanceId: 'pg-1',
-        route: '/habits',
+        route: '/items',
         releaseId: 'r1',
         rendererVersion: 'v',
         environment: 'dev',
@@ -125,14 +125,14 @@ void main() {
       expect(restored.occurredAt, original.occurredAt);
       expect(restored.clientSentAt, original.clientSentAt);
       expect(restored.payload['id'], 'h1');
-      expect(restored.eventName, 'ops.habit.checked-in');
+      expect(restored.eventName, 'ops.item.checked-in');
 
       final other = MFEventEnvelope(
-        eventName: 'ops.habit.checked-in',
+        eventName: 'ops.item.checked-in',
         payload: const {'id': 'h2'},
         sessionId: 'ses-2',
         pageInstanceId: 'pg-2',
-        route: '/habits',
+        route: '/items',
         releaseId: 'r1',
         rendererVersion: 'v',
         environment: 'dev',
@@ -206,7 +206,7 @@ void main() {
           'adapter.check-in',
           const ComponentContract(
             telemetry: MFTelemetryAnnotation(
-              events: {'success': 'ops.habit.checked-in'},
+              events: {'success': 'ops.item.checked-in'},
               args: ['id'],
             ),
           ),
@@ -251,7 +251,7 @@ void main() {
       await runtime.start();
       await runtime.execute('do-check', item: const {'id': 'h1'});
       await queue.flush();
-      final event = sink.delivered.firstWhere((e) => e.eventName == 'ops.habit.checked-in');
+      final event = sink.delivered.firstWhere((e) => e.eventName == 'ops.item.checked-in');
       expect(event.payload['id'], 'h1', reason: '声明键进入 payload');
       expect(event.payload.containsKey('secret_note'), isFalse, reason: '未声明键不进入采集面（§24.7 定向内容）');
     });
@@ -344,7 +344,7 @@ void main() {
       );
       await runtime.start();
       runtime.state.write('page', 'habits', [
-        {'id': 'h1', 'name': '晨跑', 'action': '打卡'},
+        {'id': 'h1', 'name': '任务A', 'action': '打卡'},
         {'id': 'h2', 'name': '阅读', 'action': '打卡'},
       ]);
       runtime.generation.value++;
@@ -352,7 +352,7 @@ void main() {
       await tester.pumpWidget(MicroFlowApp(project: project, registry: registry, runtime: runtime));
       await tester.pump();
 
-      expect(find.text('晨跑'), findsOneWidget);
+      expect(find.text('任务A'), findsOneWidget);
       expect(find.text('阅读'), findsOneWidget);
       expect(find.text('打卡'), findsNWidgets(2), reason: '每项各渲染一份模板');
 

@@ -1,4 +1,4 @@
-/** OpcHub unified-gateway client shared by all console SPAs.
+/** Unified-gateway client shared by all console SPAs.
  *
  * Every call goes through the single dispatch endpoint with the standard
  * envelope {code, data, message}; the session token rides both the
