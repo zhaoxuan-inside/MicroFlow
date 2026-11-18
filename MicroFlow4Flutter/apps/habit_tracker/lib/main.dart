@@ -45,7 +45,8 @@ void main() {
   _attachRecovery(fw, project, storage);
   _restoreSession(fw.runtime, storage, project.recoveryContracts['recovery-default']!);
 
-  runApp(MicroFlowApp(project: project, registry: registry, runtime: fw.runtime));
+  runApp(MicroFlowApp(project: project, registry: registry, runtime: fw.runtime,
+      appName: '习惯打卡'));
 }
 
 /// 运行中持久化：恢复快照 + 数据质量口径（丢弃计数供管理平台汇总）。

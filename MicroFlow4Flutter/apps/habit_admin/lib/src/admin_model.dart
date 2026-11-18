@@ -168,15 +168,6 @@ MFProject buildAdminProject() {
           type: 'Stack',
           props: const {'expand': true},
           children: [
-            MFNode(
-              id: 'brand',
-              type: 'Stack',
-              props: const {'direction': 'horizontal'},
-              children: [
-                MFNode(id: 'brand-micro', type: 'Text', props: {'text': 'Micro'}),
-                MFNode(id: 'brand-flow', type: 'Text', props: {'text': 'Flow'}, style: 'style-brand'),
-              ],
-            ),
             MFNode(id: 'title', type: 'Text', props: {'text': '习惯打卡 · 运营管理'}, style: 'style-title'),
             MFNode(id: 'total', type: 'Text', props: {'text': MFRef('state.totalLabel')}),
             MFNode(
@@ -239,15 +230,6 @@ MFProject buildAdminProject() {
           type: 'Stack',
           props: const {'expand': true},
           children: [
-            MFNode(
-              id: 'brand',
-              type: 'Stack',
-              props: const {'direction': 'horizontal'},
-              children: [
-                MFNode(id: 'brand-micro', type: 'Text', props: {'text': 'Micro'}),
-                MFNode(id: 'brand-flow', type: 'Text', props: {'text': 'Flow'}, style: 'style-brand'),
-              ],
-            ),
             MFNode(id: 'title', type: 'Text', props: {'text': '事件明细与追踪'}, style: 'style-title'),
             MFNode(id: 'events-hint', type: 'Text', props: {'text': MFRef('state.eventsHint')}),
             MFNode(
@@ -313,15 +295,6 @@ MFProject buildAdminProject() {
           type: 'Stack',
           props: const {'expand': true},
           children: [
-            MFNode(
-              id: 'brand',
-              type: 'Stack',
-              props: const {'direction': 'horizontal'},
-              children: [
-                MFNode(id: 'brand-micro', type: 'Text', props: {'text': 'Micro'}),
-                MFNode(id: 'brand-flow', type: 'Text', props: {'text': 'Flow'}, style: 'style-brand'),
-              ],
-            ),
             MFNode(id: 'title', type: 'Text', props: {'text': '数据质量'}, style: 'style-title'),
             MFNode(
               id: 'quality-list',

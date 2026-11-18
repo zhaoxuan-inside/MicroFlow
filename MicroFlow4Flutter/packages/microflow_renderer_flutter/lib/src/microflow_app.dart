@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:microflow_model/microflow_model.dart';
 import 'package:microflow_runtime/microflow_runtime.dart';
 
+import 'brand.dart';
 import 'interpreter.dart';
 import 'primitives.dart';
 import 'renderer_contract.dart';
@@ -59,6 +60,7 @@ class MicroFlowApp extends StatefulWidget {
     this.themeSelection,
     this.themeNames = const [],
     this.onThemeSelected,
+    this.appName,
   });
 
   /// 本渲染器的 Renderer Contract（§12.1）：一致性测试与发布清单的引用面
@@ -76,6 +78,10 @@ class MicroFlowApp extends StatefulWidget {
   final ValueListenable<String>? themeSelection;
   final List<String> themeNames;
   final void Function(String themeId)? onThemeSelected;
+
+  /// 应用名（宿主装配传入，代码平面）：AppBar 品牌标题的后缀。空则只显示
+  /// 框架词标——裸路由路径不再是 AppBar 标题（那是调试语义，不是产品面）。
+  final String? appName;
 
   @override
   State<MicroFlowApp> createState() => _MicroFlowAppState();
@@ -184,7 +190,7 @@ class _PageHost extends StatelessWidget {
         : app.themeActions(app.widget.themeSelection?.value ?? page.frozen.theme);
     return Scaffold(
       appBar: AppBar(
-        title: Text(page.definition.route),
+        title: MFBrandMark(appName: app.widget.appName, compact: true),
         actions: themeSwitch,
       ),
       body: interpreter.renderPage(page, conditions: conditions),

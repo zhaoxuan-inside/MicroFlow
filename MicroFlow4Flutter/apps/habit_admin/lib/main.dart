@@ -35,5 +35,6 @@ void main() {
     telemetrySink: MFStorageSink(storage, key: 'admin.telemetry.log'),
   );
 
-  runApp(MicroFlowApp(project: project, registry: registry, runtime: fw.runtime));
+  runApp(MicroFlowApp(project: project, registry: registry, runtime: fw.runtime,
+      appName: '打卡运营管理'));
 }
