@@ -162,6 +162,15 @@ MFProject buildTrackerProject() {
           type: 'Stack',
           props: const {'expand': true},
           children: [
+            MFNode(
+              id: 'brand',
+              type: 'Stack',
+              props: const {'direction': 'horizontal'},
+              children: [
+                MFNode(id: 'brand-micro', type: 'Text', props: {'text': 'Micro'}),
+                MFNode(id: 'brand-flow', type: 'Text', props: {'text': 'Flow'}, style: 'style-brand'),
+              ],
+            ),
             MFNode(id: 'title', type: 'Text', t: 'habits.title', style: 'style-title'),
             MFNode(id: 'today', type: 'Text', props: {'text': MFRef('state.todayLabel')}),
             MFNode(
@@ -233,6 +242,15 @@ MFProject buildTrackerProject() {
           type: 'Stack',
           props: const {'expand': true},
           children: [
+            MFNode(
+              id: 'brand',
+              type: 'Stack',
+              props: const {'direction': 'horizontal'},
+              children: [
+                MFNode(id: 'brand-micro', type: 'Text', props: {'text': 'Micro'}),
+                MFNode(id: 'brand-flow', type: 'Text', props: {'text': 'Flow'}, style: 'style-brand'),
+              ],
+            ),
             MFNode(id: 'title', type: 'Text', t: 'stats.title', style: 'style-title'),
             MFNode(
               id: 'stat-list',
@@ -376,11 +394,12 @@ MFProject buildTrackerProject() {
     tokens: const {
       'theme-light': MFTokenSet(
         id: 'theme-light',
-        tokens: {'color.action': '#2563eb', 'color.foreground': '#111827'},
+        tokens: {'color.action': '#2563eb', 'color.foreground': '#111827', 'color.brand': '#0070F3'},
       ),
     },
     styleSheets: const {
       'style-title': MFStyleSheet(id: 'style-title', base: {'foreground': 'color.foreground'}),
+      'style-brand': MFStyleSheet(id: 'style-brand', base: {'foreground': 'color.brand'}),
     },
     recoveryContracts: const {
       'recovery-default': MFRecoveryContract(id: 'recovery-default', maxAgeSeconds: 604800),
