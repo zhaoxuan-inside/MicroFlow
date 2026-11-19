@@ -19,6 +19,36 @@ from .web import require, guard
 
 RULE_KINDS = ("consecutive_failures", "error_rate")
 
+# webhook SSRF 防护（0.11.2）：通知目标由 editor 配置，服务端会主动外呼——
+# 默认禁止指向私有/回环网段（内网探测面），ORCH_WEBHOOK_ALLOW_PRIVATE=1 显式放开
+# （仅限内网通知场景）。私网判定用 ipaddress 严格解析，不做字符串猜测。
+import ipaddress as _ipaddress
+import os as _os
+from urllib.parse import urlparse as _urlparse
+
+_PRIVATE_NETS = [
+    _ipaddress.ip_network(net)
+    for net in ("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+                "169.254.0.0/16", "0.0.0.0/8", "100.64.0.0/10", "::1/128", "fc00::/7", "fe80::/10")
+]
+
+
+def webhook_url_allowed(url: str) -> bool:
+    """通知目标准入判定：仅 http(s) 且（默认）不允许私有/回环目标。"""
+    try:
+        parsed = _urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    if _os.getenv("ORCH_WEBHOOK_ALLOW_PRIVATE") == "1":
+        return True
+    try:
+        address = _ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        return True  # 域名目标：允许（解析后的 SSRF 由出口网络策略约束）
+    return not any(address in net for net in _PRIVATE_NETS)
+
 
 # ---------------------------------------------------------------------------
 # 纯求值逻辑（无 I/O）
@@ -243,6 +273,9 @@ async def rules_save(request: Request) -> dict:
         raise ValueError("threshold 必须为正数")
     window = max(int(body.get("window_minutes") or 60), 1)
     webhook_url = str(body.get("webhook_url") or "").strip()
+    if webhook_url and not webhook_url_allowed(webhook_url):
+        raise ValueError("webhook_url 不被允许：仅 http(s) 且默认禁止私有/回环地址"
+                         "（内网通知场景需 ORCH_WEBHOOK_ALLOW_PRIVATE=1）")
     pool = await db.pool()
     rule_id = str(body.get("id") or "").strip()
     if rule_id:

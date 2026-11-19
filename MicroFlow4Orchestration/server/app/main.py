@@ -16,9 +16,21 @@ from . import lifecycle
 from . import experiments
 from . import configcenter
 from . import alerting
-from .web import envelope, err, guard, require, require_service_token
+from .web import (envelope, err, guard, require, require_service_token,
+                  clear_login_failures, hash_session_token, login_throttled,
+                  record_login_failure)
 
 app = FastAPI(title="Orchestrator Control Plane", docs_url=None, redoc_url=None)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """安全响应头（0.11.2）：nosniff / 拒绝嵌入框架 / 收紧 referrer。"""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 async def _ingest_container_operators(env: str, operators: list[dict]) -> int:
@@ -147,24 +159,32 @@ async def auth_login(request: Request):
     body = await request.json()
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")
+    client_ip = request.client.host if request.client else "unknown"
+    if login_throttled(client_ip, email):
+        raise ValueError("登录失败次数过多，请 5 分钟后再试")
     pool = await db.pool()
     row = await pool.fetchrow(
         "SELECT id, email, nickname, password_hash, role FROM users WHERE email = $1", email)
     if row is None or not db.verify_password(password, row["password_hash"]):
+        record_login_failure(client_ip, email)
         raise ValueError("邮箱或密码错误")
+    clear_login_failures(client_ip, email)
     token = secrets.token_urlsafe(32)
     from datetime import datetime, timedelta, timezone
     expires = datetime.now(timezone.utc) + timedelta(hours=72)
     await pool.execute(
         "INSERT INTO sessions (token, user_id, email, nickname, role, expires_at) "
         "VALUES ($1, $2, $3, $4, $5, $6)",
-        token, row["id"], row["email"], row["nickname"], row["role"], expires)
+        hash_session_token(token), row["id"], row["email"], row["nickname"], row["role"], expires)
     return {"token": token, "email": row["email"], "nickname": row["nickname"], "role": row["role"]}
 
 
 @app.post("/api/auth/register")
 @guard
 async def auth_register(request: Request):
+    import os
+    if os.getenv("ORCH_REGISTRATION_DISABLED") == "1":
+        raise ValueError("注册已关闭（ORCH_REGISTRATION_DISABLED=1）")
     body = await request.json()
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")

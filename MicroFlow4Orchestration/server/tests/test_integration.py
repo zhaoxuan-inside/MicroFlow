@@ -185,3 +185,56 @@ def test_account_catalog_lifecycle_smoke(client):
     removed = _aio.new_event_loop().run_until_complete(_cleanup_with_own_conn())
     assert removed["sessions"] >= 1 and removed["debug_io"] >= 1, removed
     assert _get(client, token, "/api/approvals").json()["code"] == 200  # 服务仍正常
+
+    # ── 安全加固判据（0.11.2）──
+    # SEC1 会话 token 只以 sha256 摘要入库（库泄露不等于会话劫持）
+    import asyncpg as _apg, os as _os2
+    async def _check_hash():
+        conn = await _apg.connect(os.environ["ORCH_TEST_DATABASE_URL"])
+        row = await conn.fetchrow(
+            "SELECT token FROM sessions WHERE email = $1 LIMIT 1", "admin@orch.local")
+        await conn.close()
+        return row["token"] if row else None
+    stored = _aio.new_event_loop().run_until_complete(_check_hash())
+    assert stored and stored != token, "明文 token 不得入库"
+    assert len(stored) == 64, "应为 sha256 十六进制摘要"
+
+    # SEC2 登录限流：连续失败达阈值后 400（错误信息含限流提示），正确密码也被拒
+    http2, _ = client
+    for _ in range(10):
+        bad = http2.post("/api/auth/login",
+                         json={"email": "admin@orch.local", "password": "wrong-pass"})
+    throttled = http2.post("/api/auth/login",
+                           json={"email": "admin@orch.local", "password": "wrong-pass"})
+    assert throttled.json()["code"] == 400 and "过多" in throttled.json()["message"]
+    even_correct = http2.post("/api/auth/login",
+                              json={"email": "admin@orch.local", "password": "orch-test-admin-pw"})
+    assert "过多" in even_correct.json()["message"], "限流窗口内正确密码同样被拒"
+
+    # SEC3 webhook SSRF：私有/回环目标与非法 scheme 被拒绝
+    ssrf = _post(client, token, "/api/alerts/rules",
+                 {"name": "ssrf-test", "kind": "error_rate", "target": "*",
+                  "threshold": 1, "webhook_url": "http://127.0.0.1:9000/hook"}).json()
+    assert ssrf["code"] == 400 and "不被允许" in ssrf["message"]
+    ssrf2 = _post(client, token, "/api/alerts/rules",
+                  {"name": "ssrf-test2", "kind": "error_rate", "target": "*",
+                   "threshold": 1, "webhook_url": "ftp://example.com"}).json()
+    assert ssrf2["code"] == 400
+
+    # SEC4 安全响应头
+    resp = http2.get("/api/envs", headers={"Authorization": f"Bearer {token}"})
+    assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+    assert resp.headers.get("X-Frame-Options") == "DENY"
+
+    # SEC5 编排图 payload 超限拒绝（1MB）
+    big_graph = {"entry_node": "n0", "exit_node": "n0",
+                 "nodes": [{"id": "n0", "kind": "OPERATOR", "operator": "x",
+                            "pad": "x" * (1024 * 1024 + 100)}],
+                 "edges": []}
+    assert _post(client, token, "/api/scenarios/create",
+                 {"code": "big_graph", "display_name": "超限样例"}).json()["code"] == 200
+    assert _post(client, token, "/api/scenarios/big_graph/lock").json()["code"] == 200
+    oversized = _post(client, token, "/api/scenarios/big_graph/versions",
+                      {"version": "v1", "graph": big_graph}).json()
+    assert oversized["code"] == 400 and "1MB" in oversized["message"]
+    _delete(client, token, "/api/scenarios/big_graph/lock")

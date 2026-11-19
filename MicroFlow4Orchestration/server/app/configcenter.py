@@ -155,6 +155,8 @@ async def items_version_save(request: Request) -> dict:
         validate_value(value)
     except Exception as exc:  # noqa: BLE001 - 值契约非法即拒绝，不做静默修正
         raise ValueError(f"配置值非法：{exc}") from exc
+    if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > 262_144:
+        raise ValueError("配置值超过 256KB 上限")
     latest = await pool.fetchval(
         "SELECT max(version::integer) FROM config_versions WHERE namespace_code = $1 AND key = $2",
         namespace, key)

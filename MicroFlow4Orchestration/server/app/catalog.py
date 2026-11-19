@@ -577,9 +577,15 @@ async def scenarios_delete(request: Request) -> dict:
 scenario_routes["delete"] = scenarios_delete
 
 
+MAX_GRAPH_BYTES = 1_048_576  # 画布/编排 JSON 载荷上限（1MB）——超限即拒绝（DoS 面）
+
+
 def _dump(obj) -> str:
     import json
-    return json.dumps(obj, ensure_ascii=False)
+    text = json.dumps(obj, ensure_ascii=False)
+    if len(text.encode("utf-8")) > MAX_GRAPH_BYTES:
+        raise ValueError("编排图 JSON 超过 1MB 上限——请拆分子图后再保存")
+    return text
 
 
 
