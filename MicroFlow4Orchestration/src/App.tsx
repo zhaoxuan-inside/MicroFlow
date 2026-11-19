@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { ThemeProvider } from "@microflow4kit/ui";
+import { ErrorBoundary } from "@microflow4kit/ui";
 import { AppShell } from "./shell/AppShell";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -15,7 +16,8 @@ import { ConfigsPage } from "./pages/ConfigsPage";
 export function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<AppShell />}>
@@ -33,6 +35,7 @@ export function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

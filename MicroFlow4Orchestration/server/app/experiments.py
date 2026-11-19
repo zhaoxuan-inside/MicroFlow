@@ -130,12 +130,14 @@ async def experiments_create(request: Request) -> dict:
     exists = await pool.fetchval("SELECT 1 FROM experiments WHERE key = $1", key)
     if exists:
         raise ValueError(f"实验 key 已存在：{key}")
-    await pool.execute(
-        "INSERT INTO experiments (key, display_name, description, status, traffic_percent, "
-        "variants, env_key, created_by) VALUES ($1, $2, $3, 'DRAFT', $4, $5::jsonb, $6, $7)",
-        key, str(body.get("display_name") or key), str(body.get("description") or ""),
-        max(int(body.get("traffic_percent") or 0), 0), json.dumps(variants, ensure_ascii=False),
-        str(body.get("env_key") or "dev"), user["email"])
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO experiments (key, display_name, description, status, traffic_percent, "
+                "variants, env_key, created_by) VALUES ($1, $2, $3, 'DRAFT', $4, $5::jsonb, $6, $7)",
+                key, str(body.get("display_name") or key), str(body.get("description") or ""),
+                max(int(body.get("traffic_percent") or 0), 0), json.dumps(variants, ensure_ascii=False),
+                str(body.get("env_key") or "dev"), user["email"])
     return {"key": key, "status": "DRAFT"}
 
 
@@ -234,10 +236,12 @@ async def experiments_assign(request: Request) -> dict:
     if row is None:
         raise KeyError(f"实验不存在：{key}")
     decision = decide({**dict(row), "variants": json.loads(row["variants"])}, uid)
-    await pool.execute(
-        "INSERT INTO experiment_assignments (experiment_key, uid, variant, reason) VALUES ($1, $2, $3, $4) "
-        "ON CONFLICT (experiment_key, uid) DO NOTHING",
-        key, uid, decision["variant"], decision["reason"])
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO experiment_assignments (experiment_key, uid, variant, reason) VALUES ($1, $2, $3, $4) "
+                "ON CONFLICT (experiment_key, uid) DO NOTHING",
+                key, uid, decision["variant"], decision["reason"])
     return {**decision, "key": key, "uid": uid}
 
 

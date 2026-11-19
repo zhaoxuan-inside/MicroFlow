@@ -20,4 +20,6 @@ export const host = {
   eventNamespace: env.VITE_CONSOLE_EVENT_NAMESPACE || "mf-console",
   /** 品牌名（标题/登录页） */
   brand: env.VITE_CONSOLE_BRAND || "MicroFlow",
+  requestTimeoutMs: env.VITE_CONSOLE_REQUEST_TIMEOUT_MS ?
+    Number(env.VITE_CONSOLE_REQUEST_TIMEOUT_MS) : 15000,
 } as const;

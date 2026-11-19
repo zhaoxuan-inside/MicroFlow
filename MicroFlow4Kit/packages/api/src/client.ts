@@ -48,6 +48,22 @@ export function onSessionChange(cb: () => void): () => void {
   };
 }
 
+/** 0.11.1 可靠性：请求超时控制——网关挂起不再拖死调用方（AbortController）。 */
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if ((error as { name?: string })?.name === "AbortError") {
+      throw new ApiError(408, `请求超时（${timeoutMs}ms）`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function dispatch<T = any>(
   scenario: string,
   payload: Record<string, unknown> = {},
@@ -60,25 +76,29 @@ export async function dispatch<T = any>(
   if (scope.tenantId) context.tenant_id = scope.tenantId;
   if (scope.projectId) context.project_id = scope.projectId;
   if (scope.envKey) context.env_key = scope.envKey;
-  const res = await fetch(host.endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  const res = await fetchWithTimeout(
+    host.endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        scenario,
+        version,
+        payload,
+        context,
+      }),
     },
-    body: JSON.stringify({
-      scenario,
-      version,
-      payload,
-      context,
-    }),
-  });
+    host.requestTimeoutMs ?? 15000,
+  );
   if (!res.ok) {
     throw new ApiError(res.status, `HTTP ${res.status}`);
   }
-  const body = await res.json();
-  if (body.code !== 200 && body.code !== 201) {
-    throw new ApiError(body.code, body.message || "请求失败", body.trace_id);
+  const envelope = await res.json();
+  if (envelope.code !== 200 && envelope.code !== 201) {
+    throw new ApiError(envelope.code, envelope.message || "请求失败", envelope.trace_id);
   }
-  return body.data as T;
+  return envelope.data as T;
 }

@@ -148,3 +148,40 @@ def test_account_catalog_lifecycle_smoke(client):
     acked = _post(client, token, f"/api/alerts/{alerts[0]['id']}/ack").json()
     assert acked["code"] == 200 and acked["data"]["status"] == "ACKED"
     assert repeat.json()["code"] == 200
+
+    # ── 可靠性收口判据（0.11.1）──
+    # R1 健康检查：无鉴权探活，db 可达
+    health = http.get("/api/health").json()
+    assert health["status"] == "ok" and health["db"] is True
+
+    # R2 事务原子性：多语句写失败时整体回滚（重复算子名让第二条 INSERT 撞唯一约束）
+    dup = _post(client, token, "/api/operators/create", {"name": "dup_op", "code": "x"}).json()
+    assert dup["code"] == 200
+    clash = _post(client, token, "/api/operators/create", {"name": "dup_op", "code": "y"}).json()
+    assert clash["code"] == 400 and "已存在" in clash["message"]
+    versions = _get(client, token, "/api/operators/dup_op").json()["data"]["versions"]
+    assert len(versions) == 1, "第二次创建失败后不得残留半提交状态"
+
+    # R3 保留期清理：插入过期会话与过期 debug 上报，cleanup 后归零
+    import asyncpg, os as _os
+    async def _seed_stale():
+        conn = await asyncpg.connect(os.environ["ORCH_TEST_DATABASE_URL"])
+        await conn.execute(
+            "INSERT INTO sessions (token, user_id, email, nickname, role, expires_at) "
+            "SELECT 'stale-token', id, email, nickname, role, now() - interval '8 days' FROM users LIMIT 1")
+        await conn.execute(
+            "INSERT INTO debug_io (scenario_code, version, env, node_id, status, reported_at) "
+            "VALUES ('stale', 'v0', 'dev', 'n', 'FAILED', now() - interval '15 days')")
+        await conn.close()
+    import asyncio as _aio
+    _aio.new_event_loop().run_until_complete(_seed_stale())
+    from app import db as _db
+    async def _cleanup_with_own_conn():
+        connection = await asyncpg.connect(os.environ["ORCH_TEST_DATABASE_URL"])
+        try:
+            return await _db.cleanup_retention(connection)
+        finally:
+            await connection.close()
+    removed = _aio.new_event_loop().run_until_complete(_cleanup_with_own_conn())
+    assert removed["sessions"] >= 1 and removed["debug_io"] >= 1, removed
+    assert _get(client, token, "/api/approvals").json()["code"] == 200  # 服务仍正常

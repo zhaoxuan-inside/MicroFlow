@@ -7,3 +7,4 @@ export * from "./assetLock";
 export * from "./i18n";
 export * from "./command";
 export * from "./logo";
+export * from "./errorBoundary";

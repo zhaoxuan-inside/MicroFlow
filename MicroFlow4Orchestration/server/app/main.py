@@ -103,7 +103,10 @@ async def container_report_node_io(request: Request):
                if r.get("scenario_code") or body.get("scenario_code")]
     evaluated = 0
     if records:
-        evaluated = await alerting.process(await db.pool(), records)
+        try:
+            evaluated = await alerting.process(await db.pool(), records)
+        except Exception as exc:  # noqa: BLE001 - 观测面故障不劫持上报通道
+            print(f"[alerting] 上报求值失败（已隔离）：{type(exc).__name__}: {exc}")
     return envelope({"accepted": accepted, "alerts_fired": evaluated})
 
 
@@ -281,9 +284,19 @@ _mount("POST", "/api/alerts/rules", alerting.routes["rules_save"])
 _mount("DELETE", "/api/alerts/rules/{rule_id}", alerting.routes["rules_delete"])
 
 
+@app.get("/api/health")
+async def health():
+    """探活端点（无鉴权）：控制面存活 + 数据库可达性。"""
+    return {"status": "ok", "db": await db.main_ready()}
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     bootstrap = await db.init_schema()
+    removed = await db.cleanup_retention()
+    if any(removed.values()):
+        print(f"[retention] 启动清理：{removed}")
+    db.start_retention_loop()
     if bootstrap.get("bootstrap_admin_password"):
         print(f"[orch-control] 内置管理员 {bootstrap['bootstrap_admin_email']} "
               f"初始密码：{bootstrap['bootstrap_admin_password']}（请立即妥善保存）")

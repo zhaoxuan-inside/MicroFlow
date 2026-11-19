@@ -6,7 +6,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import test from "node:test";
+import { mock, test } from "node:test";
 
 const HOST_STUB =
   'const host = { tokenKey: "test-token", eventNamespace: "test-console", endpoint: "https://host.example/dispatch" };';
@@ -133,5 +133,36 @@ test("dispatch raises ApiError for http failures and business envelope errors", 
     delete globalThis.window;
     delete globalThis.localStorage;
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("dispatch times out when the gateway hangs (15s ceiling)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "microflow-client-timeout-"));
+  withLocalStorage();
+  const originalFetch = globalThis.fetch;
+  // 挂起的网关：fetch 永不 resolve，仅在 abort 信号到达时以 AbortError 拒绝。
+  globalThis.fetch = (url, init) =>
+    new Promise((_, reject) => {
+      init.signal.addEventListener("abort", () => {
+        const error = new Error("The operation was aborted");
+        error.name = "AbortError";
+        reject(error);
+      });
+    });
+  const module = await loadClient(dir);
+  try {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    const pending = module.dispatch("slow.scenario", {}).then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+    mock.timers.tick(15000);
+    const outcome = await pending;
+    assert.ok(outcome.error instanceof module.ApiError, "AbortError 必须转译为 ApiError");
+    assert.match(outcome.error.message, /超时/);
+    assert.equal(outcome.error.code, 408);
+  } finally {
+    mock.timers.reset();
+    globalThis.fetch = originalFetch;
   }
 });

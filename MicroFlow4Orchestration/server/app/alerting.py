@@ -153,12 +153,22 @@ async def process(pool, records: list[dict]) -> int:
             prior_delivery = prior_delivery if isinstance(prior_delivery, list) else []
         webhook_url = str(event["rule"].get("webhook_url") or "")
         if webhook_url:
-            attempts = prior_delivery[-4:]
-            attempts.append(await _post_webhook(webhook_url, _webhook_payload(event)))
-            detail = {**event["detail"], "delivery": attempts}
-            await pool.execute("UPDATE alert_events SET detail = $2::jsonb WHERE rule_id = $1 "
-                               "AND scope_key = $3 AND status = 'OPEN'",
-                               rule_id, json.dumps(detail, ensure_ascii=False), event["scope_key"])
+            # 0.11.1 非阻塞：通知投递（最长 8s）与落库放后台任务，上报/执行响应
+            # 不被通知拖慢；任务异常兜底记录，绝不外泄。
+            async def _deliver(rule_id=rule_id, scope_key=event["scope_key"],
+                               url=webhook_url, payload=_webhook_payload(event),
+                               attempts=prior_delivery[-4:]):
+                try:
+                    attempts.append(await _post_webhook(url, payload))
+                    detail = {**event["detail"], "delivery": attempts}
+                    await pool.execute(
+                        "UPDATE alert_events SET detail = $2::jsonb WHERE rule_id = $1 "
+                        "AND scope_key = $3 AND status = 'OPEN'",
+                        rule_id, json.dumps(detail, ensure_ascii=False), scope_key)
+                except Exception as exc:  # noqa: BLE001 - 通知失败不外泄
+                    print(f"[alerting] webhook 投递异常（已隔离）：{type(exc).__name__}: {exc}")
+
+            asyncio.create_task(_deliver())
     return delivered
 
 

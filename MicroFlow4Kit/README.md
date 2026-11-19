@@ -20,3 +20,5 @@ npm test                     # node --experimental-transform-types --test（Node
 ```
 
 租户、项目、环境或登录身份变化时，控制台为新范围创建独立查询缓存并重建页面状态；其他标签页通过 storage 事件同步。该机制防止旧范围缓存继续显示，但不替代宿主服务端的鉴权和数据隔离。
+
+> 可靠性（0.11.1）：`dispatch`/`orchRest` 内置 15s 请求超时（`VITE_CONSOLE_REQUEST_TIMEOUT_MS` 可覆盖）——网关挂起不再拖死调用方；SPA 侧 `ErrorBoundary`（@microflow4kit/ui）兜底组件树崩溃。

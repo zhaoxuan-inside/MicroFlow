@@ -36,14 +36,27 @@ export async function orchRest<T = unknown>(
   payload?: Record<string, unknown>,
 ): Promise<T> {
   const token = getOrchToken();
-  const res = await fetch(ORCH_BASE + path, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: method === "GET" ? undefined : JSON.stringify(payload ?? {}),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  let res: Response;
+  try {
+    res = await fetch(ORCH_BASE + path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: method === "GET" ? undefined : JSON.stringify(payload ?? {}),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if ((error as { name?: string })?.name === "AbortError") {
+      throw new OrchRestError(408, "控制面请求超时（15s）");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
   const body = await res.json();
   if (body.code !== 200 && body.code !== 201) {
     if (body.code === 401) {

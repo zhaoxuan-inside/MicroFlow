@@ -75,6 +75,32 @@ async def _http_post_json(url: str, payload: dict, token: str, timeout_s: float 
     return await loop.run_in_executor(None, _do)
 
 
+class deployer:
+    """算子/图产物向环境容器的推送（0.11.1 可靠性收口）。
+
+    operators_publish 曾引用不存在的 deployer——发布一调用即 ImportError 500。
+    推送语义：遍历全部环境容器逐个注册，单环境失败不阻塞其余环境与发布本身，
+    结果如实返回（失败环境由调用方/前端展示，不做静默成功）。
+    """
+
+    @staticmethod
+    async def push_operator_to_all_envs(operator: dict) -> list[dict]:
+        pool = await db.pool()
+        results = []
+        for row in await pool.fetch("SELECT env, base_url, token FROM env_containers ORDER BY env"):
+            env = row["env"]
+            try:
+                result = await _http_post_json(
+                    f"{row['base_url']}/container/operators/register",
+                    {"name": operator["name"], "code": operator["code"],
+                     "entry_function": operator["entry_function"], "version": operator["version"]},
+                    row["token"])
+                results.append({"env": env, "ok": True, "status": result.get("status")})
+            except Exception as exc:  # noqa: BLE001 - 单环境失败不阻塞其余环境
+                results.append({"env": env, "ok": False, "error": str(exc)[:200]})
+        return results
+
+
 async def _record_test(conn, subject_kind: str, subject_code: str, version: str,
                        env: str, status: str, inputs, output, error: str, ran_by: str) -> None:
     await conn.execute(
@@ -132,16 +158,18 @@ async def do_deploy(pool, deployed_by: str, code: str, version: str, env: str) -
             container["token"])
     except Exception as exc:  # noqa: BLE001
         return {"deployed": False, "env": env, "error": f"下发失败：{exc}"}
-    await pool.execute(
-        "INSERT INTO deployments (asset_kind, asset_code, version, env, config_hash, flow_digest, deployed_by) "
-        "VALUES ('scenario', $1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
-        code, version, env, config_hash, digest, deployed_by)
-    await pool.execute(
-        "INSERT INTO env_current (asset_kind, asset_code, env, version, config_hash, flow_digest, deployed_by, updated_at) "
-        "VALUES ('scenario', $1, $2, $3, $4, $5, $6, now()) "
-        "ON CONFLICT (asset_kind, asset_code, env) DO UPDATE SET "
-        "version = $3, config_hash = $4, flow_digest = $5, deployed_by = $6, updated_at = now()",
-        code, env, version, config_hash, digest, deployed_by)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO deployments (asset_kind, asset_code, version, env, config_hash, flow_digest, deployed_by) "
+                "VALUES ('scenario', $1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
+                code, version, env, config_hash, digest, deployed_by)
+            await conn.execute(
+                "INSERT INTO env_current (asset_kind, asset_code, env, version, config_hash, flow_digest, deployed_by, updated_at) "
+                "VALUES ('scenario', $1, $2, $3, $4, $5, $6, now()) "
+                "ON CONFLICT (asset_kind, asset_code, env) DO UPDATE SET "
+                "version = $3, config_hash = $4, flow_digest = $5, deployed_by = $6, updated_at = now()",
+                code, env, version, config_hash, digest, deployed_by)
     return {"deployed": True, "env": env, "version": version,
             "config_hash": config_hash, "flow_digest": digest}
 
@@ -277,13 +305,16 @@ async def scenario_execute(request: Request) -> dict:
                                env, "passed" if result.get("status") == "SUCCESS" else "failed",
                                body.get("inputs") or {}, result.get("final_output"),
                                str(result.get("error_message") or ""), user["email"])
-        # 告警求值挂点：场景执行结果（真实业务数据路径）。
+        # 告警求值挂点（故障隔离）：求值失败不影响执行结果返回。
         from datetime import datetime, timezone
         from . import alerting
-        await alerting.process(pool, [{
-            "scenario_code": code, "env": env, "node_id": "",
-            "status": str(result.get("status") or ""),
-            "reported_at": datetime.now(timezone.utc).isoformat()}])
+        try:
+            await alerting.process(pool, [{
+                "scenario_code": code, "env": env, "node_id": "",
+                "status": str(result.get("status") or ""),
+                "reported_at": datetime.now(timezone.utc).isoformat()}])
+        except Exception as exc:  # noqa: BLE001 - 观测面故障不劫持业务路径
+            print(f"[alerting] 场景执行求值失败（已隔离）：{type(exc).__name__}: {exc}")
     return result
 
 
@@ -323,12 +354,13 @@ async def operator_test_run(request: Request) -> dict:
     raw_status = result.get("status") or "FAILED"
     status = "passed" if raw_status in ("passed", "SUCCESS") else "failed"
     async with pool.acquire() as conn:
-        await _record_test(conn, "operator", name, version, env, status,
-                           inputs, result.get("output"), str(result.get("error") or ""),
-                           user["email"])
-        await conn.execute(
-            "UPDATE operator_versions SET unit_test = $3 WHERE operator_name = $1 AND version = $2",
-            name, version, status)
+        async with conn.transaction():
+            await _record_test(conn, "operator", name, version, env, status,
+                               inputs, result.get("output"), str(result.get("error") or ""),
+                               user["email"])
+            await conn.execute(
+                "UPDATE operator_versions SET unit_test = $3 WHERE operator_name = $1 AND version = $2",
+                name, version, status)
     return {"status": status, "env": env, "output": result.get("output"),
             "duration_ms": result.get("duration_ms"), "error": result.get("error")}
 

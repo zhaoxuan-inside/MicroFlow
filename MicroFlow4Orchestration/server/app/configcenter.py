@@ -204,12 +204,14 @@ async def items_publish(request: Request) -> dict:
                          json.loads((await pool.fetchval(
                              "SELECT gray FROM config_items WHERE namespace_code = $1 AND key = $2",
                              namespace, key)) or "{}"))
-    await pool.execute("UPDATE config_versions SET status = 'PUBLISHED' WHERE namespace_code = $1 "
-                       "AND key = $2 AND version = $3", namespace, key, version)
-    await pool.execute(
-        "UPDATE config_items SET current_version = $3, gray = $4::jsonb, updated_at = now() "
-        "WHERE namespace_code = $1 AND key = $2",
-        namespace, key, version, json.dumps(gray, ensure_ascii=False))
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("UPDATE config_versions SET status = 'PUBLISHED' WHERE namespace_code = $1 "
+                               "AND key = $2 AND version = $3", namespace, key, version)
+            await conn.execute(
+                "UPDATE config_items SET current_version = $3, gray = $4::jsonb, updated_at = now() "
+                "WHERE namespace_code = $1 AND key = $2",
+                namespace, key, version, json.dumps(gray, ensure_ascii=False))
     return {"namespace": namespace, "key": key, "version": version, "gray": gray}
 
 
@@ -237,12 +239,14 @@ async def items_rollback(request: Request) -> dict:
         raise ValueError(f"当前生效版本已是 {version}，无需回滚")
     gray_raw = await pool.fetchval(
         "SELECT gray FROM config_items WHERE namespace_code = $1 AND key = $2", namespace, key)
-    await pool.execute("UPDATE config_versions SET status = 'PUBLISHED', published_by = $4, "
-                       "published_at = now() WHERE namespace_code = $1 AND key = $2 AND version = $3",
-                       namespace, key, version, user["email"])
-    await pool.execute(
-        "UPDATE config_items SET current_version = $3, updated_at = now() "
-        "WHERE namespace_code = $1 AND key = $2", namespace, key, version)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("UPDATE config_versions SET status = 'PUBLISHED', published_by = $4, "
+                               "published_at = now() WHERE namespace_code = $1 AND key = $2 AND version = $3",
+                               namespace, key, version, user["email"])
+            await conn.execute(
+                "UPDATE config_items SET current_version = $3, updated_at = now() "
+                "WHERE namespace_code = $1 AND key = $2", namespace, key, version)
     return {"namespace": namespace, "key": key, "version": version,
             "rolled_back_from": current, "gray": json.loads(gray_raw or "{}")}
 

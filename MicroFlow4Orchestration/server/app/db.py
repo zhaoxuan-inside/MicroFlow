@@ -253,6 +253,9 @@ CREATE TABLE IF NOT EXISTS alert_events (
   acked_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS alert_events_status_idx ON alert_events (status, last_seen_at);
+CREATE INDEX IF NOT EXISTS deployments_asset_idx ON deployments (asset_kind, asset_code, env);
+CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at);
+CREATE INDEX IF NOT EXISTS debug_io_reported_idx ON debug_io (reported_at);
 """
 
 SERVICE_TOKEN = os.getenv("ORCH_SERVICE_TOKEN", "orch-service-secret")
@@ -284,7 +287,8 @@ def verify_password(password: str, stored: str) -> bool:
 async def pool() -> asyncpg.Pool:
     global _pool
     if _pool is None or _pool._closed:
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=8)
+        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=8,
+                                     command_timeout=30)
     return _pool
 
 
@@ -320,6 +324,54 @@ async def init_schema() -> dict:
         return {"bootstrap_admin_email": os.getenv("ORCH_ADMIN_EMAIL", "admin@orch.local"),
                 "bootstrap_admin_password": admin_password}
     return {}
+
+
+# 数据保留期（天）：会话 7 / debug 上报 14 / 已确认告警 30。代码/配置/数据三
+# 分离纪律的运营面——无限增长是可靠性的慢性病，清理必须幂等且可重复执行。
+RETENTION_DAYS = {"sessions": 7, "debug_io": 14, "alert_events_acked": 30}
+
+
+async def cleanup_retention(conn=None) -> dict:
+    """按保留期清理运行时数据；返回各表删除行数（如实上报，不静默）。
+
+    conn 可注入独立连接（测试/无 pool 环境）；缺省走全局连接池。
+    """
+    if conn is None:
+        pool_ = await pool()
+        async with pool_.acquire() as acquired:
+            return await cleanup_retention(acquired)
+    out = {}
+    out["sessions"] = await conn.execute(
+        "DELETE FROM sessions WHERE expires_at < now()")
+    out["debug_io"] = await conn.execute(
+        "DELETE FROM debug_io WHERE reported_at < now() - interval "
+        f"'{RETENTION_DAYS['debug_io']} days'")
+    out["alert_events_acked"] = await conn.execute(
+        "DELETE FROM alert_events WHERE status = 'ACKED' AND acked_at < now() - interval "
+        f"'{RETENTION_DAYS['alert_events_acked']} days'")
+    return {k: int(v.split()[-1]) for k, v in out.items()}
+
+
+_retention_task: "asyncio.Task | None" = None
+
+
+def start_retention_loop() -> None:
+    """启动保留期周期清理（幂等：已在跑则不重复）。"""
+    global _retention_task
+    if _retention_task is None or _retention_task.done():
+        _retention_task = asyncio.create_task(_retention_loop())
+
+
+async def _retention_loop() -> None:
+    """每小时执行一次保留期清理；单次失败记录后继续（清理永不中断服务）。"""
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            removed = await cleanup_retention()
+            if any(removed.values()):
+                print(f"[retention] 清理完成：{removed}")
+        except Exception as exc:  # noqa: BLE001 - 清理失败不中断循环
+            print(f"[retention] 清理失败（下轮重试）：{type(exc).__name__}: {exc}")
 
 
 def now() -> str:

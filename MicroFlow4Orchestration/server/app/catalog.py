@@ -124,14 +124,15 @@ async def operators_create(request: Request) -> dict:
     description = str(body.get("description") or "")
     code = str(body.get("code") or "")
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO operators (name, display_name, domain, description, source, source_env, "
-            "current_version, created_by) VALUES ($1, $2, $3, $4, 'platform', '', 'v1.0.0', $5)",
-            name, display_name, domain, description, user["email"])
-        await conn.execute(
-            "INSERT INTO operator_versions (operator_name, version, code, changelog, created_by) "
-            "VALUES ($1, 'v1.0.0', $2, '初始版本', $3)",
-            name, code, user["email"])
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO operators (name, display_name, domain, description, source, source_env, "
+                "current_version, created_by) VALUES ($1, $2, $3, $4, 'platform', '', 'v1.0.0', $5)",
+                name, display_name, domain, description, user["email"])
+            await conn.execute(
+                "INSERT INTO operator_versions (operator_name, version, code, changelog, created_by) "
+                "VALUES ($1, 'v1.0.0', $2, '初始版本', $3)",
+                name, code, user["email"])
     return {"name": name, "version": "v1.0.0"}
 
 
@@ -179,17 +180,18 @@ async def operators_save_version(request: Request) -> dict:
         raise KeyError(f"算子不存在：{name}")
     await locks.require(pool, "operator", name, user["email"])
     async with pool.acquire() as conn:
-        version = await next_version(conn, "operator_versions", "operator_name", name,
-                                     status_col="status")
-        await conn.execute(
-            "INSERT INTO operator_versions (operator_name, version, code, entry_function, "
-            "changelog, created_by) VALUES ($1, $2, $3, $4, $5, $6) "
-            "ON CONFLICT (operator_name, version) DO UPDATE SET code = $3, "
-            "entry_function = $4, changelog = $5, status = 'DRAFT', unit_test = NULL",
-            name, version, code, entry_function, changelog, user["email"])
-        await conn.execute(
-            "UPDATE operators SET current_version = $2, updated_at = now() WHERE name = $1",
-            name, version)
+        async with conn.transaction():
+            version = await next_version(conn, "operator_versions", "operator_name", name,
+                                         status_col="status")
+            await conn.execute(
+                "INSERT INTO operator_versions (operator_name, version, code, entry_function, "
+                "changelog, created_by) VALUES ($1, $2, $3, $4, $5, $6) "
+                "ON CONFLICT (operator_name, version) DO UPDATE SET code = $3, "
+                "entry_function = $4, changelog = $5, status = 'DRAFT', unit_test = NULL",
+                name, version, code, entry_function, changelog, user["email"])
+            await conn.execute(
+                "UPDATE operators SET current_version = $2, updated_at = now() WHERE name = $1",
+                name, version)
     return {"name": name, "version": version, "changelog": changelog}
 
 
@@ -211,14 +213,17 @@ async def operators_publish(request: Request) -> dict:
     await locks.require(pool, "operator", name, user["email"])
     if row["unit_test"] != "passed":
         raise ValueError(f"算子 {name}@{version} 未通过单元测试，禁止发布（先在详情页完成测试）")
-    await pool.execute(
-        "UPDATE operator_versions SET status = 'PUBLISHED' WHERE operator_name = $1 AND version = $2",
-        name, version)
-    await pool.execute(
-        "UPDATE operator_versions SET status = 'SUPERSEDED' "
-        "WHERE operator_name = $1 AND version <> $2 AND status = 'PUBLISHED'", name, version)
-    await pool.execute(
-        "UPDATE operators SET current_version = $2, updated_at = now() WHERE name = $1", name, version)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE operator_versions SET status = 'PUBLISHED' WHERE operator_name = $1 AND version = $2",
+                name, version)
+            await conn.execute(
+                "UPDATE operator_versions SET status = 'SUPERSEDED' "
+                "WHERE operator_name = $1 AND version <> $2 AND status = 'PUBLISHED'", name, version)
+            await conn.execute(
+                "UPDATE operators SET current_version = $2, updated_at = now() WHERE name = $1",
+                name, version)
     # 发布 = 下发算子代码到全部环境容器（注册进各容器算子池）
     from .lifecycle import deployer
     results = await deployer.push_operator_to_all_envs(
@@ -264,17 +269,18 @@ async def operators_copy(request: Request) -> dict:
         "SELECT code, entry_function, description FROM operator_versions "
         "WHERE operator_name = $1 ORDER BY created_at DESC LIMIT 1", name)
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO operators (name, display_name, domain, description, source, source_env, "
-            "current_version, created_by) VALUES ($1, $2, $3, $4, 'platform', '', 'v1.0.0', $5)",
-            new_name, f"{src['display_name']}_copy" if src["display_name"] else new_name,
-            src["domain"], f"复制自 {name}", user["email"])
-        await conn.execute(
-            "INSERT INTO operator_versions (operator_name, version, code, entry_function, "
-            "changelog, created_by) VALUES ($1, 'v1.0.0', $2, $3, $4, $5)",
-            new_name, latest["code"] if latest else "",
-            latest["entry_function"] if latest else "action_entry",
-            f"复制自 {name}", user["email"])
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO operators (name, display_name, domain, description, source, source_env, "
+                "current_version, created_by) VALUES ($1, $2, $3, $4, 'platform', '', 'v1.0.0', $5)",
+                new_name, f"{src['display_name']}_copy" if src["display_name"] else new_name,
+                src["domain"], f"复制自 {name}", user["email"])
+            await conn.execute(
+                "INSERT INTO operator_versions (operator_name, version, code, entry_function, "
+                "changelog, created_by) VALUES ($1, 'v1.0.0', $2, $3, $4, $5)",
+                new_name, latest["code"] if latest else "",
+                latest["entry_function"] if latest else "action_entry",
+                f"复制自 {name}", user["email"])
     return {"name": new_name, "copied_from": name}
 
 
@@ -328,14 +334,15 @@ async def subgraphs_create(request: Request) -> dict:
         raise ValueError(f"子图编码已存在：{code}")
     empty_graph = {"entry_node": "", "exit_node": "", "nodes": [], "edges": []}
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO subgraphs (code, display_name, description, current_version, created_by) "
-            "VALUES ($1, $2, $3, 'v1.0.0', $4)",
-            code, str(body.get("display_name") or code), str(body.get("description") or ""), user["email"])
-        await conn.execute(
-            "INSERT INTO subgraph_versions (subgraph_code, version, graph, changelog, created_by) "
-            "VALUES ($1, 'v1.0.0', $2::jsonb, '初始版本', $3)",
-            code, _dump(empty_graph), user["email"])
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO subgraphs (code, display_name, description, current_version, created_by) "
+                "VALUES ($1, $2, $3, 'v1.0.0', $4)",
+                code, str(body.get("display_name") or code), str(body.get("description") or ""), user["email"])
+            await conn.execute(
+                "INSERT INTO subgraph_versions (subgraph_code, version, graph, changelog, created_by) "
+                "VALUES ($1, 'v1.0.0', $2::jsonb, '初始版本', $3)",
+                code, _dump(empty_graph), user["email"])
     return {"code": code, "version": "v1.0.0"}
 
 
@@ -376,16 +383,17 @@ async def subgraphs_save_version(request: Request) -> dict:
         raise KeyError(f"子图不存在：{code}")
     await locks.require(pool, "subgraph", code, user["email"])
     async with pool.acquire() as conn:
-        version = await next_version(conn, "subgraph_versions", "subgraph_code", code,
-                                     deploy_kind=None)
-        await conn.execute(
-            "INSERT INTO subgraph_versions (subgraph_code, version, graph, changelog, created_by) "
-            "VALUES ($1, $2, $3::jsonb, $4, $5) "
-            "ON CONFLICT (subgraph_code, version) DO UPDATE SET graph = $3::jsonb, changelog = $4",
-            code, version, _dump(graph), changelog, user["email"])
-        await conn.execute(
-            "UPDATE subgraphs SET current_version = $2, updated_at = now() WHERE code = $1",
-            code, version)
+        async with conn.transaction():
+            version = await next_version(conn, "subgraph_versions", "subgraph_code", code,
+                                         deploy_kind=None)
+            await conn.execute(
+                "INSERT INTO subgraph_versions (subgraph_code, version, graph, changelog, created_by) "
+                "VALUES ($1, $2, $3::jsonb, $4, $5) "
+                "ON CONFLICT (subgraph_code, version) DO UPDATE SET graph = $3::jsonb, changelog = $4",
+                code, version, _dump(graph), changelog, user["email"])
+            await conn.execute(
+                "UPDATE subgraphs SET current_version = $2, updated_at = now() WHERE code = $1",
+                code, version)
     return {"code": code, "version": version}
 
 
@@ -426,16 +434,17 @@ async def subgraphs_copy(request: Request) -> dict:
         "SELECT graph FROM subgraph_versions WHERE subgraph_code = $1 "
         "ORDER BY created_at DESC LIMIT 1", code)
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO subgraphs (code, display_name, description, current_version, created_by) "
-            "VALUES ($1, $2, $3, 'v1.0.0', $4)",
-            new_code, f"{src['display_name']}_copy" if src["display_name"] else new_code,
-            f"复制自 {code}", user["email"])
-        await conn.execute(
-            "INSERT INTO subgraph_versions (subgraph_code, version, graph, changelog, created_by) "
-            "VALUES ($1, 'v1.0.0', $2::jsonb, $3, $4)",
-            new_code, _dump(latest["graph"]) if latest else _dump({"entry_node": "", "exit_node": "", "nodes": [], "edges": []}),
-            f"复制自 {code}", user["email"])
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO subgraphs (code, display_name, description, current_version, created_by) "
+                "VALUES ($1, $2, $3, 'v1.0.0', $4)",
+                new_code, f"{src['display_name']}_copy" if src["display_name"] else new_code,
+                f"复制自 {code}", user["email"])
+            await conn.execute(
+                "INSERT INTO subgraph_versions (subgraph_code, version, graph, changelog, created_by) "
+                "VALUES ($1, 'v1.0.0', $2::jsonb, $3, $4)",
+                new_code, _dump(latest["graph"]) if latest else _dump({"entry_node": "", "exit_node": "", "nodes": [], "edges": []}),
+                f"复制自 {code}", user["email"])
     return {"code": new_code, "copied_from": code}
 
 
@@ -478,14 +487,15 @@ async def scenarios_create(request: Request) -> dict:
         raise ValueError(f"场景编码已存在：{code}")
     empty_graph = {"entry_node": "", "exit_node": "", "nodes": [], "edges": []}
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO scenarios (code, display_name, description, current_version, created_by) "
-            "VALUES ($1, $2, $3, 'v1.0.0', $4)",
-            code, str(body.get("display_name") or code), str(body.get("description") or ""), user["email"])
-        await conn.execute(
-            "INSERT INTO scenario_versions (scenario_code, version, graph, enable_saga, changelog, created_by) "
-            "VALUES ($1, 'v1.0.0', $2::jsonb, TRUE, '初始版本', $3)",
-            code, _dump(empty_graph), user["email"])
+        async with conn.transaction():
+            await conn.execute(
+                "INSERT INTO scenarios (code, display_name, description, current_version, created_by) "
+                "VALUES ($1, $2, $3, 'v1.0.0', $4)",
+                code, str(body.get("display_name") or code), str(body.get("description") or ""), user["email"])
+            await conn.execute(
+                "INSERT INTO scenario_versions (scenario_code, version, graph, enable_saga, changelog, created_by) "
+                "VALUES ($1, 'v1.0.0', $2::jsonb, TRUE, '初始版本', $3)",
+                code, _dump(empty_graph), user["email"])
     return {"code": code, "version": "v1.0.0"}
 
 
@@ -531,18 +541,19 @@ async def scenarios_save_version(request: Request) -> dict:
     if not exists:
         raise KeyError(f"场景不存在：{code}")
     async with pool.acquire() as conn:
-        await locks.require(conn, "scenario", code, user["email"])
-        version = await next_version(conn, "scenario_versions", "scenario_code", code,
-                                     deploy_kind="scenario")
-        await conn.execute(
-            "INSERT INTO scenario_versions (scenario_code, version, graph, enable_saga, changelog, created_by) "
-            "VALUES ($1, $2, $3::jsonb, $4, $5, $6) "
-            "ON CONFLICT (scenario_code, version) DO UPDATE SET graph = $3::jsonb, "
-            "enable_saga = $4, changelog = $5",
-            code, version, _dump(graph), enable_saga, changelog, user["email"])
-        await conn.execute(
-            "UPDATE scenarios SET current_version = $2, updated_at = now() WHERE code = $1",
-            code, version)
+        async with conn.transaction():
+            await locks.require(conn, "scenario", code, user["email"])
+            version = await next_version(conn, "scenario_versions", "scenario_code", code,
+                                         deploy_kind="scenario")
+            await conn.execute(
+                "INSERT INTO scenario_versions (scenario_code, version, graph, enable_saga, changelog, created_by) "
+                "VALUES ($1, $2, $3::jsonb, $4, $5, $6) "
+                "ON CONFLICT (scenario_code, version) DO UPDATE SET graph = $3::jsonb, "
+                "enable_saga = $4, changelog = $5",
+                code, version, _dump(graph), enable_saga, changelog, user["email"])
+            await conn.execute(
+                "UPDATE scenarios SET current_version = $2, updated_at = now() WHERE code = $1",
+                code, version)
     return {"code": code, "version": version}
 
 
