@@ -1,3 +1,26 @@
+## 0.11.0
+
+视觉能力升级——由宿主「前端框架开发出来的产品效果差、完全不能使用」的直接反馈驱动。
+诊断结论：模型能表达什么 UI 取决于元组件面 × token 面，此前两者都为「验证框架
+语义」设计的最小集，模型无从表达产品级界面。本版补齐视觉表达面：
+
+* **Stack 表面容器化（renderer 0.9.0）**：`background`（token 名或直接色值）、
+  `radius`、`borderWidth`+`borderColor`（发丝边）、`shadow`（soft/raised 弱投影
+  预设，对齐 Kit 表面设计语言）——任意 Stack 可声明为产品级卡片表面。
+* **未知 token 不染色**：表面取色经 tokenRaw 通道，token 未声明返回 null 不
+  染色——绝不回落灰色伪造表面。
+* **框架面主题**：AppBar 回归表面语义（surface 底/elevation 0/无染色/标题排版），
+  Scaffold 背景接 token `color.background`；默认种子色 indigo→品牌蓝 #0070F3
+  （与 MFBrandMark/Kit 同源）；debug 检查横幅在渲染入口关闭。
+* **Grid 列宽修复**：columns 列宽在松约束（Wrap）下 widthFactor 不生效、页面
+  场景退化为自由换行——改经 LayoutBuilder 量取可用宽度等分列宽。
+* **Text 显示值宽松字符串化（鲁棒性）**：列表项数字字段（MFRef 求值为 int）是
+  真实数据形态，此前 `text as String?` 直接让整页构建崩溃。
+* 表达力参考样例：test/fixtures/product_sample.dart（仪表盘形态：指标卡行 +
+  表面面板 + 列表面），作为测试资产展示声明方式（非业务应用）。
+* 测试：test/framework_v110_surface_test.dart 4 用例（表面装饰结构/token 语义/
+  框架面主题/品牌默认种子色）；全仓 88 用例全绿 + analyze 0 issues。
+
 ## 0.10.1
 
 定位纯净收口——承载应用（habit_tracker/habit_admin 两个打卡业务应用）移出框架仓库：

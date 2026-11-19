@@ -56,7 +56,7 @@ class MicroFlowApp extends StatefulWidget {
     required this.project,
     required this.registry,
     required this.runtime,
-    this.themeSeedColor = Colors.indigo,
+    this.themeSeedColor = const Color(0xFF0070F3),
     this.themeSelection,
     this.themeNames = const [],
     this.onThemeSelected,
@@ -96,16 +96,46 @@ class _MicroFlowAppState extends State<MicroFlowApp> {
     super.dispose();
   }
 
-  /// 主题种子色从选中主题的有效 token 解析（§36.2/§36.3）。
-  Color _seedFor(String themeId) {
+  /// 选中主题的有效 token 集（§36.2/§36.3）。
+  Map<String, Object?> _tokensFor(String themeId) {
     final resolver = MFStyleResolver(
       tokenSets: widget.project.tokens,
       styleSheets: widget.project.styleSheets,
       themes: widget.project.themes,
       defaultThemeId: widget.project.manifest.defaultTheme ?? 'theme-default',
     );
-    final action = resolver.effectiveTokens(themeId)['color.action'];
+    return resolver.effectiveTokens(themeId);
+  }
+
+  /// 主题种子色：token 'color.action' 优先，缺省回落宿主种子色（品牌蓝）。
+  Color _seedFor(String themeId) {
+    final action = _tokensFor(themeId)['color.action'];
     return action == null ? widget.themeSeedColor : resolveTokenColor(action);
+  }
+
+  /// 0.11.0：产品级框架面——AppBar 回归表面语义（surface 底/elevation 0/
+  /// 无染色），Scaffold 背景接 token 'color.background'（缺省回落主题面）。
+  ThemeData _themeFor(String themeId) {
+    final tokens = _tokensFor(themeId);
+    final scheme = ColorScheme.fromSeed(seedColor: _seedFor(themeId));
+    final scaffoldBackground =
+        tokens['color.background'] == null ? null : resolveTokenColor(tokens['color.background']);
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: scaffoldBackground,
+      appBarTheme: AppBarTheme(
+        backgroundColor: scaffoldBackground ?? scheme.surface,
+        foregroundColor: scheme.onSurface,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 
   @override
@@ -120,7 +150,8 @@ class _MicroFlowAppState extends State<MicroFlowApp> {
       final themeId = project.manifest.defaultTheme ?? 'theme-default';
       return MaterialApp(
         title: project.manifest.projectId,
-        theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: _seedFor(themeId))),
+        debugShowCheckedModeBanner: false,
+        theme: _themeFor(themeId),
         home: body,
       );
     }
@@ -128,7 +159,8 @@ class _MicroFlowAppState extends State<MicroFlowApp> {
       valueListenable: selection,
       builder: (_, selected, _) => MaterialApp(
         title: project.manifest.projectId,
-        theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: _seedFor(selected))),
+        debugShowCheckedModeBanner: false,
+        theme: _themeFor(selected),
         home: body,
       ),
     );

@@ -36,6 +36,7 @@ class MFRenderContext {
     required this.props,
     required this.onEvent,
     required this.tokenColor,
+    this.tokenRaw,
     this.motionSurfaces = const {},
     this.resolveMotion,
     this.recordMotionDiag,
@@ -50,6 +51,10 @@ class MFRenderContext {
 
   /// Resolve a named color token into a Flutter color.
   final Color Function(String tokenName) tokenColor;
+
+  /// 0.11.0：token 原始值解析（未知 token 返回 null，不染色）——表面容器
+  /// 用它区分「token 缺失 = 不染色」与「直接色值」两条路径。
+  final Object? Function(String tokenName)? tokenRaw;
 
   /// 该节点组件契约已声明的动效面（§36.5）；渲染侧动效只允许出现在这里。
   final Set<String> motionSurfaces;
@@ -111,8 +116,12 @@ class MFPrimitiveTable {
               fontSize: typography?.fontSize,
               fontWeight: typography?.fontWeight,
             );
+      // 0.11.0 鲁棒性：显示值宽松字符串化——列表项数字字段（MFRef 求值为
+      // int/double）是真实数据形态，直接 as String? 会让整页构建崩溃。
+      final rawText = ctx.props['text'];
+      final displayText = rawText == null ? '' : rawText.toString();
       return Text(
-        (ctx.props['text'] as String?) ?? '',
+        displayText,
         style: merged,
         textAlign: switch (ctx.props['align']) {
           'center' => TextAlign.center,
@@ -215,6 +224,38 @@ class MFPrimitiveTable {
       final padding = (ctx.props['padding'] as num?)?.toDouble();
       if (padding != null && padding > 0) {
         content = Padding(padding: EdgeInsets.all(padding), child: content);
+      }
+      // 0.11.0：表面容器 props——background/radius/border/shadow 使 Stack 可
+      // 声明为产品级卡片表面（与 Kit 的表面/发丝边/弱投影设计语言对齐）。
+      // 值语义：以 '#' 开头为直接色值，否则按 token 名解析；解析失败回落透明。
+      final surfaceColor = _surfaceColor(ctx, ctx.props['background']);
+      final radius = (ctx.props['radius'] as num?)?.toDouble();
+      final borderWidth = (ctx.props['borderWidth'] as num?)?.toDouble();
+      final borderColor = _surfaceColor(ctx, ctx.props['borderColor']);
+      final shadow = ctx.props['shadow'] as String?;
+      final decorated = surfaceColor != null ||
+          radius != null ||
+          (borderWidth != null && borderWidth > 0) ||
+          shadow != null;
+      if (decorated) {
+        content = Container(
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: radius == null ? null : BorderRadius.circular(radius),
+            border: (borderWidth != null && borderWidth > 0)
+                ? Border.all(
+                    width: borderWidth,
+                    color: borderColor ?? const Color(0x14000000),
+                  )
+                : null,
+            boxShadow: switch (shadow) {
+              'soft' => [BoxShadow(color: const Color(0x14000000), offset: const Offset(0, 1), blurRadius: 3)],
+              'raised' => [BoxShadow(color: const Color(0x1F000000), offset: const Offset(0, 2), blurRadius: 8)],
+              _ => null,
+            },
+          ),
+          child: content,
+        );
       }
       // 0.10.0：maxWidth 数值 prop——垂直容器限宽 + 水平居中（经典页面容器），
       // 与 Scroll/根 expand 组合时行为保持：外层撑满，内容按最大宽度居中。
@@ -338,14 +379,27 @@ class MFPrimitiveTable {
       return Align(alignment: alignment, child: child);
     },
     'Grid': (ctx, view) {
-      final columns = (ctx.props['columns'] as num?)?.toInt() ?? 2;
+      final columns = ((ctx.props['columns'] as num?)?.toInt() ?? 2).clamp(1, 12);
       // 0.8.0：gap 可声明（默认 8 保持既有行为）。
       final gap = (ctx.props['gap'] as num?)?.toDouble() ?? 8;
-      return Wrap(
-        runSpacing: gap,
-        spacing: gap,
-        children: [for (final child in view.children) FractionallySizedBox(widthFactor: 1 / columns, child: child)],
-      );
+      // 0.11.0 修复：columns 列宽语义在松约束（Wrap）下 widthFactor 不生效，
+      // 页面场景三列会退化为自由换行。改经 LayoutBuilder 量取可用宽度，
+      // 等分列宽（扣除列间 gap）；无界宽度回落内容自适应。
+      return LayoutBuilder(builder: (context, constraints) {
+        final available = constraints.maxWidth;
+        final bounded = available.isFinite;
+        final itemWidth = bounded
+            ? (available - gap * (columns - 1)) / columns
+            : null;
+        return Wrap(
+          runSpacing: gap,
+          spacing: gap,
+          children: [
+            for (final child in view.children)
+              itemWidth == null ? child : SizedBox(width: itemWidth, child: child),
+          ],
+        );
+      });
     },
     'Scroll': (ctx, view) => SingleChildScrollView(child: view.children.isEmpty ? const SizedBox() : view.children.first),
     'Overlay': (ctx, view) => Stack(fit: StackFit.loose, children: view.children),
@@ -403,4 +457,14 @@ Color resolveTokenColor(Object? v) {
   }
   if (v is int) return Color(v);
   return const Color(0xFF888888);
+}
+
+/// 表面容器取色（0.11.0）：'#' 开头为直接色值；否则按 token 名取原始值，
+/// 未知 token 返回 null（不染色，绝不回落灰色伪造表面）。
+Color? _surfaceColor(MFRenderContext ctx, Object? value) {
+  if (value is! String || value.isEmpty) return null;
+  if (value.startsWith('#')) return resolveTokenColor(value);
+  final raw = ctx.tokenRaw?.call(value);
+  if (raw == null) return null;
+  return resolveTokenColor(raw);
 }

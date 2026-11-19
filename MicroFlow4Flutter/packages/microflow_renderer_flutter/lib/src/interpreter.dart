@@ -270,6 +270,7 @@ class _NodeRenderer {
             .ignore();
       },
       tokenColor: (name) => resolveTokenColor(interpreter.resolveColor(name)),
+      tokenRaw: (name) => interpreter.resolveColor(name),
     );
 
     final view = MFNodeView(
