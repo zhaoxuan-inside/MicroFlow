@@ -1,0 +1,20 @@
+[project]
+name = "microflow4delivery"
+version = "0.1.0"
+description = "MicroFlow 交付流水线：应用产物内容寻址仓库 + 环境指针 + 证据门禁 + 第二人审批。"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.115"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+delivery = "delivery.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
