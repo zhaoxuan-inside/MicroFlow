@@ -6,6 +6,7 @@
 或 `context.token`，`context.user_id` 不被信任。遥测接收端口：有界容量，过载显式
 拒绝（TELEMETRY_OVERLOAD），不静默降级。
 """
+import asyncio
 import json
 import time
 import uuid
@@ -147,7 +148,9 @@ class HostGateway:
         status = "SUCCEEDED"
         try:
             try:
-                data = handler(self.db, user, payload, context)
+                # 处理器可能是重计算/阻塞型（如承载应用的流程执行），统一离线程承载：
+                # db 连接 check_same_thread=False 且全方法锁串行化，跨线程安全。
+                data = await asyncio.to_thread(handler, self.db, user, payload, context)
             except PermissionError as exc:
                 status = "FAILED"
                 return _error(403, str(exc))
@@ -210,8 +213,9 @@ class HostGateway:
             if not str(target).startswith(str(index_path.parent.resolve())):
                 return _error(404, "not found")
             if target.is_file():
-                return FileResponse(target)
-            return FileResponse(index_path)
+                return FileResponse(target, headers={"Cache-Control": "no-cache"})
+            # 无哈希文件名：强制协商缓存，避免承载应用更新后浏览器残留旧模块。
+            return FileResponse(index_path, headers={"Cache-Control": "no-cache"})
         return handler
 
 
