@@ -63,13 +63,20 @@ def _error(code: int, message: str) -> JSONResponse:
 
 
 class HostGateway:
-    """参考实现网关。编排/实验/配置中心场景由编排控制面承载，宿主按契约代理（未接线时如实拒绝）。"""
+    """参考实现网关。编排/实验/配置中心场景由编排控制面承载，宿主按契约代理（未接线时如实拒绝）。
+
+    extra_scenarios：宿主产品的场景扩展点（PersonnelHub 等承载应用）——
+    {name: {"handler": (db, user, payload, context) -> data, "permission": str | None}}。
+    扩展场景与契约场景走同一信封/身份/权限/审计通道。
+    """
 
     def __init__(self, db: HostDatabase, apps_dir: Path | None = None,
-                 delegated_target: str | None = None):
+                 delegated_target: str | None = None,
+                 extra_scenarios: dict | None = None):
         self.db = db
         self.apps_dir = Path(apps_dir) if apps_dir else None
         self.delegated_target = delegated_target
+        self.extra_scenarios = dict(extra_scenarios or {})
 
     # ---- 身份与权限 ----
 
@@ -128,13 +135,14 @@ class HostGateway:
                                        " this host has no delegated target wired (honest refusal)")
                 return _error(501, "delegation wiring is a host extension point (not part of the reference implementation)")
 
-        if scenario not in SCENARIO_PERMISSIONS:
+        extra = self.extra_scenarios.get(scenario)
+        if extra is None and scenario not in SCENARIO_PERMISSIONS:
             return _error(404, f"unknown scenario {scenario!r}")
-        required = SCENARIO_PERMISSIONS[scenario]
+        required = extra["permission"] if extra is not None else SCENARIO_PERMISSIONS[scenario]
         if required is not None and not self._has_permission(user, required):
             return _error(403, f"scenario {scenario!r} requires permission {required!r}")
 
-        handler = SCENARIOS[scenario]
+        handler = extra["handler"] if extra is not None else SCENARIOS[scenario]
         started = time.monotonic()
         status = "SUCCEEDED"
         try:
@@ -207,8 +215,9 @@ class HostGateway:
         return handler
 
 
-def create_app(db: HostDatabase, apps_dir: Path | None = None) -> FastAPI:
-    gateway = HostGateway(db, apps_dir)
+def create_app(db: HostDatabase, apps_dir: Path | None = None,
+               extra_scenarios: dict | None = None) -> FastAPI:
+    gateway = HostGateway(db, apps_dir, extra_scenarios=extra_scenarios)
     app = FastAPI(title="MicroFlow Host Reference", version="0.1.0")
 
     @app.post("/api/v1/dispatch")
@@ -228,8 +237,11 @@ def create_app(db: HostDatabase, apps_dir: Path | None = None) -> FastAPI:
 
         @app.get("/apps/{name}/{path:path}", include_in_schema=False)
         async def spa(name: str, path: str = ""):
-            if name not in ("ops", "bizops", "orchestration"):
-                return _error(404, "not found")
+            # 通用化：apps_dir 下任何含 index.html 的子目录都可托管（承载应用同权）；
+            # 名字限定 filename-safe 防路径穿越。
+            import re as _re
+            if not _re.fullmatch(r"[a-z0-9_-]{1,64}", name) or not (root / name / "index.html").is_file():
+                return _error(404, f"app {name!r} is not deployed on this host (build output missing)")
             return gateway.spa_app(name, root / name / "index.html")(path)
 
     return app

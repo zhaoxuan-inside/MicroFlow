@@ -207,6 +207,44 @@ class TelemetryAndAggregationTests(HostTestBase):
         self.assertEqual(detail.json()["data"]["run"]["scenario"], "auth.login")
 
 
+class ExtensionPointTests(HostTestBase):
+    """宿主产品扩展点：extra_scenarios 与通用 /apps 托管（PersonnelHub 等承载应用）。"""
+
+    def test_extra_scenario_goes_through_same_envelope_auth_and_permission(self):
+        def echo(db, user, payload, context):
+            return {"echo": payload["what"], "actor": user["name"] if user else None}
+
+        app = create_app(self.db, extra_scenarios={
+            "personnel.employees.list": {"handler": echo, "permission": "project:manage"},
+            "personnel.hello": {"handler": echo, "permission": None},
+        })
+        client = TestClient(app)
+        # 匿名可达场景（permission None）——无需令牌
+        ok = client.post("/api/v1/dispatch", json={"scenario": "personnel.hello", "payload": {"what": "x"}})
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json()["data"]["echo"], "x")
+        # 权限场景：匿名 403；管理员（持 project:manage）通过
+        denied = client.post("/api/v1/dispatch", json={"scenario": "personnel.employees.list", "payload": {}})
+        self.assertEqual(denied.status_code, 403)
+        token = self.login()
+        allowed = client.post("/api/v1/dispatch",
+                              json={"scenario": "personnel.employees.list", "payload": {"what": "y"},
+                                    "context": {"token": token}})
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json()["data"]["actor"], "root")
+
+    def test_generic_apps_hosting_serves_any_deployed_subdir(self):
+        apps = self.root / "apps"
+        (apps / "personnel").mkdir(parents=True)
+        (apps / "personnel" / "index.html").write_text("<html>personnel</html>", encoding="utf-8")
+        (apps / ".." / "escape").mkdir(parents=True, exist_ok=True)
+        hosted = TestClient(create_app(self.db, apps_dir=apps))
+        self.assertEqual(hosted.get("/apps/personnel/").text, "<html>personnel</html>")
+        # 非法名字与未部署目录诚实 404
+        self.assertEqual(hosted.get("/apps/Nope/").status_code, 404)
+        self.assertEqual(hosted.get("/apps/absent/").status_code, 404)
+
+
 class StaticAndScaffoldTests(HostTestBase):
     def test_spa_hosting_serves_build_output_or_honest_404(self):
         apps = self.root / "apps"
