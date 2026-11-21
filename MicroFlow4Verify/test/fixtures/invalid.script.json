@@ -1,0 +1,14 @@
+{
+  "scriptVersion": 1,
+  "title": "门禁负例集",
+  "steps": [
+    { "op": "open", "page": "nope-page" },
+    { "op": "tap", "node": "ghost", "event": "press" },
+    { "op": "tap", "node": "submit", "event": "explode" },
+    { "op": "fill", "node": "submit", "value": "x" },
+    { "op": "expect_binding", "expr": { "ref": "state.username" } },
+    { "op": "expect_event", "event": "biz.custom", "payload": {} },
+    { "op": "screenshot" },
+    { "op": "expect_route", "page": "ghost-page", "extra": true }
+  ]
+}

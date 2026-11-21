@@ -1,0 +1,86 @@
+{
+  "manifest": {
+    "project_id": "verify-demo",
+    "entry_page": "login-page",
+    "default_theme": "theme-light",
+    "default_locale": "zh-CN",
+    "type_dialect_version": "1.0"
+  },
+  "pages": [
+    {
+      "id": "login-page",
+      "route": "/login",
+      "stateMembers": ["username", "authenticated"],
+      "tree": {
+        "id": "login-root",
+        "type": "Stack",
+        "children": [
+          { "id": "username", "type": "Input", "props": { "placeholder": "用户名" } },
+          { "id": "submit", "type": "Button", "props": { "label": "登录" } },
+          { "id": "hint", "type": "Text", "props": { "text": { "ref": "state.username" } } }
+        ]
+      }
+    },
+    {
+      "id": "home-page",
+      "route": "/home",
+      "stateMembers": [],
+      "tree": {
+        "id": "home-root",
+        "type": "Stack",
+        "children": [{ "id": "welcome", "type": "Text", "props": { "text": { "ref": "param.user" } } }]
+      }
+    }
+  ],
+  "bindingMaps": {
+    "map-login": {
+      "id": "map-login",
+      "bindings": [
+        {
+          "id": "username-change",
+          "on": "username.change",
+          "concurrency": "reject-new",
+          "actions": [{ "kind": "state", "target": "username", "value": { "ref": "payload.value" }, "scope": "page" }]
+        },
+        {
+          "id": "submit-login",
+          "on": "submit.press",
+          "concurrency": "reject-new",
+          "actions": [
+            {
+              "kind": "adapter",
+              "call": "demo.authenticate",
+              "arguments": { "username": { "ref": "state.username" } },
+              "as": "user",
+              "timeout_ms": 800
+            },
+            { "kind": "state", "target": "authenticated", "value": { "ref": "prev.user" }, "scope": "page" }
+          ]
+        },
+        {
+          "id": "submit-navigate",
+          "on": "submit.press",
+          "concurrency": "reject-new",
+          "guard": { "ref": "state.authenticated" },
+          "actions": [
+            { "kind": "navigation", "target": "home-page", "arguments": { "user": { "ref": "state.authenticated" } } }
+          ]
+        }
+      ]
+    }
+  },
+  "tokens": {
+    "tokens-demo": { "id": "tokens-demo", "tokens": { "color.accent": "#0071E3" } }
+  },
+  "themes": {
+    "theme-light": { "id": "theme-light", "base": "tokens-demo" }
+  },
+  "navigation": { "edges": [{ "from": "login-page", "to": "home-page" }], "fallback": {} },
+  "registry": [
+    { "id": "Stack", "kind": "primitive", "contract": { "motion_surfaces": ["entrance"], "layout": { "display": ["block"], "sizing": ["hug", "fill"] } } },
+    { "id": "Text", "kind": "primitive", "contract": { "props": { "text": { "type": "string" } }, "motion_surfaces": ["entrance"] } },
+    { "id": "Button", "kind": "primitive", "contract": { "props": { "label": { "type": "string" } }, "events": { "press": { "type": "string" } }, "motion_surfaces": ["hover"] } },
+    { "id": "Input", "kind": "primitive", "contract": { "props": { "placeholder": { "type": "string" } }, "events": { "change": { "type": "string" }, "input": { "type": "string" } } } },
+    { "id": "demo.authenticate", "kind": "function", "contract": { "output": { "type": "string" } } }
+  ]
+}

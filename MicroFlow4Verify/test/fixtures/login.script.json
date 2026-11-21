@@ -1,0 +1,14 @@
+{
+  "scriptVersion": 1,
+  "title": "登录 → 工作台 UI 路径",
+  "steps": [
+    { "op": "fill", "node": "username", "value": "alice" },
+    { "op": "expect_binding", "expr": { "ref": "state.username" }, "equals": "alice" },
+    { "op": "tap", "node": "submit", "event": "press" },
+    { "op": "expect_route", "page": "home-page" },
+    { "op": "expect_binding", "expr": { "ref": "param.user" }, "equals": "alice" },
+    { "op": "expect_event", "event": "ops.page.viewed", "payload": { "page_definition_id": "home-page" } },
+    { "op": "back" },
+    { "op": "expect_route", "page": "login-page" }
+  ]
+}
