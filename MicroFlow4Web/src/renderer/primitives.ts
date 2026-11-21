@@ -189,7 +189,12 @@ function defaultBuilders(): [string, MFPrimitiveBuilder][] {
         dialog.appendChild(header);
       }
       for (const child of view.children) dialog.appendChild(child);
-      if (bool(ctx.props, 'open')) dialog.showModal();
+      if (bool(ctx.props, 'open')) {
+        // showModal 要求元素已连接文档树——构建期是 detached 的，挂载后微任务再开。
+        queueMicrotask(() => {
+          if (dialog.isConnected && !dialog.open) dialog.showModal();
+        });
+      }
       return dialog;
     }],
     // ---- Tier B ----
