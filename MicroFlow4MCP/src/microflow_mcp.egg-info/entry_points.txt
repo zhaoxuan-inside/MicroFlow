@@ -1,0 +1,2 @@
+[console_scripts]
+microflow-mcp = microflow_mcp.tools:main

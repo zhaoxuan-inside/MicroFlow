@@ -189,6 +189,16 @@ def _argv_run(arguments):
             lambda: os.unlink(handle.name))
 
 
+def _argv_test(arguments):
+    argv = ["test", _existing_file(arguments, "project"), *_ephemeral(arguments)]
+    if arguments.get("budget") is not None:
+        budget = arguments["budget"]
+        if type(budget) is not int or budget < 1:
+            raise ContractViolation("INVALID_ARGUMENT", "budget must be a positive integer", "budget")
+        argv += ["--budget", str(budget)]
+    return argv
+
+
 def _argv_scaffold(arguments):
     kind = _string(arguments, "kind")
     into = _absolute(arguments, "into")
@@ -269,6 +279,14 @@ TOOLS = [
            "properties": {**_PROJECT, "flow": {"type": "string"},
                           "input": {"type": "object", "description": "Flow input object"}},
            "required": ["project", "flow", "input"], "additionalProperties": False}, _argv_run),
+    _tool("microflow_test",
+          "Run project-declared tests in isolation (tests in the project configuration: "
+          "flow regression input/expectOutput pairs and operator contract cases). Every "
+          "test entry must cite the origin of its expectations (business rule or confirmed "
+          "sample); exit 1 lists structured failures. " + _TEXT,
+          {"type": "object",
+           "properties": {**_PROJECT, "budget": {"type": "integer", "minimum": 1}},
+           "required": ["project"], "additionalProperties": False}, _argv_test),
     _tool("microflow_operators",
           "List the operator catalog with schemas, capabilities, default policies and "
           "static reference counts for a compiled project. " + _TEXT,

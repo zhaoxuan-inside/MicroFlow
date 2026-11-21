@@ -184,6 +184,10 @@ _SUMMARIES = {
     "INVALID_SCAFFOLD_ID": "Scaffold id must be filename-safe (letters, digits, underscore and dash)",
     "SCAFFOLD_TARGET_EXISTS": "Scaffold target already exists; scaffold never overwrites",
     "CONTEXT_BUDGET_EXCEEDED": "Context result exceeds its explicit budget; narrow the query",
+    # 项目回归测试（CLI test 命令）
+    "INVALID_TEST_CONFIG": "Test declaration in the project configuration is malformed",
+    "UNKNOWN_TEST_TARGET": "Test references a flow or operator ref not in the release",
+    "TEST_BUDGET_EXCEEDED": "Test result exceeds its explicit budget; narrow the selection",
     "ARTIFACT_DIGEST_MISMATCH": "Artifact bytes do not match their digest",
     "MANIFEST_DIGEST_MISMATCH": "Manifest digest does not match its content",
     "MISSING_ARTIFACT": "Referenced artifact is missing",

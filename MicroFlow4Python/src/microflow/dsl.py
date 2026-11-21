@@ -71,8 +71,11 @@ def parse_project(text: str) -> dict:
                 project["modules"].append(args[0])
             elif name == "defaults" and not args and "defaults" not in project:
                 project["defaults"] = kwargs
+            elif name == "tests" and len(args) == 1 and isinstance(args[0], list) and not kwargs \
+                    and "tests" not in project:
+                project["tests"] = args[0]
             else:
-                fail(statement, "Expected module(...) or defaults(...)")
+                fail(statement, "Expected module(...), defaults(...) or tests(...)")
         elif isinstance(statement, ast.With) and len(statement.items) == 1 and statement.items[0].optional_vars is None:
             _, args, kwargs = call(statement.items[0].context_expr, "flow")
             if len(args) != 1 or type(args[0]) is not str or args[0] in flow_ids:

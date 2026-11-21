@@ -31,10 +31,11 @@ class ProtocolTests(unittest.TestCase):
         self.assertIsNone(handle_message({"jsonrpc": "2.0", "method": "notifications/cancelled",
                                           "params": {"requestId": 9}}, TOOLS))
 
-    def test_tools_list_exposes_the_twelve_command_tools(self):
+    def test_tools_list_exposes_the_thirteen_command_tools(self):
         response = handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, TOOLS)
         names = [tool["name"] for tool in response["result"]["tools"]]
-        self.assertEqual(len(names), 12)
+        self.assertEqual(len(names), 13)
+        self.assertIn("microflow_test", names)
         self.assertIn("microflow_check", names)
         self.assertIn("microflow_run", names)
         self.assertIn("microflow_context", names)
@@ -66,21 +67,22 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(len(lines), 3)
         self.assertEqual(lines[0]["error"]["code"], -32700)
         self.assertEqual(lines[1]["result"], {})
-        self.assertEqual(len(lines[2]["result"]["tools"]), 12)
+        self.assertEqual(len(lines[2]["result"]["tools"]), 13)
 
 
 class ToolBehaviorTests(unittest.TestCase):
     def _call(self, name, arguments):
         return json.loads(by_name(name).invoke(arguments)["content"][0]["text"])
 
-    def test_capabilities_envelope_lists_twelve_cli_commands(self):
+    def test_capabilities_envelope_lists_thirteen_cli_commands(self):
         result = by_name("microflow_capabilities").invoke({})
         self.assertFalse(result["isError"])
         envelope = json.loads(result["content"][0]["text"])
         self.assertEqual(envelope["protocol"], "microflow-cli-v1")
         self.assertEqual(set(envelope["commands"]),
                          {"capabilities", "check", "context", "describe", "diagnostics", "impact",
-                          "operators", "policy-check", "policy-schema", "run", "scaffold", "schema"})
+                          "operators", "policy-check", "policy-schema", "run", "scaffold", "schema",
+                          "test"})
 
     def test_bridge_rejects_relative_paths_without_spawning_the_cli(self):
         result = by_name("microflow_check").invoke({"project": "relative/project.json"})

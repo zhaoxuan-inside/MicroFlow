@@ -1,0 +1,68 @@
+Metadata-Version: 2.4
+Name: microflow-mcp
+Version: 0.1.0
+Summary: MCP tool-server bridge wrapping the MicroFlow CLI for VibeCoding tools
+License: MIT
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+
+# MicroFlow4MCP —— VibeCoding 工具接入桥
+
+把 MicroFlow CLI 包装为 **MCP（Model Context Protocol）工具服务器**，让 AI 编程工具（ZCode、Claude Code、Cursor 等）直接调用框架命令面。设计约束（归档 CLI 命令体系设计 §1.1）：协议适配层在框架之外——零依赖内核不感知 MCP，本包只依赖标准库。
+
+## 工具面（12 个，逐一对应 CLI 命令）
+
+| 工具 | CLI | 用途 |
+|---|---|---|
+| `microflow_capabilities` | capabilities | 实现标识 + 命令目录（**先探测，再使用**） |
+| `microflow_diagnostics` | diagnostics | 诊断码目录（解释诊断不靠猜） |
+| `microflow_policy_schema` | policy-schema | 策略字段/默认值/合并语义 |
+| `microflow_describe` | describe | 注册显式可信算子文件并输出契约 |
+| `microflow_policy_check` | policy-check | 校验一个策略层 |
+| `microflow_check` | check | 编译 + 静态校验（**0 诊断才继续**） |
+| `microflow_run` | run | 本地演练执行（强制 `--ephemeral`；调用成功 ≠ 业务成功） |
+| `microflow_operators` | operators | 算子目录（契约/能力/策略/引用计数） |
+| `microflow_schema` | schema | 查询一个契约 Schema |
+| `microflow_impact` | impact | 静态影响预览（改契约前必看） |
+| `microflow_context` | context | 算子局部上下文（不读全项目即可理解边界） |
+| `microflow_scaffold` | scaffold | 生成算子/流程候选骨架（只写 `--into`，永不覆盖） |
+
+每个工具的 description 内嵌使用纪律；退出码映射：CLI 0 → `isError=false`，1（对象否定）/2（请求失败）→ `isError=true`；输出原文透传 CLI 的 `microflow-cli-v1` JSON 信封。
+
+## 接入
+
+前置：Python ≥3.12，且 MicroFlow4Python 已安装（`pip install -e MicroFlow4Python`）。
+
+```bash
+pip install -e MicroFlow4MCP    # 零第三方依赖
+microflow-mcp                   # stdio 模式，等待客户端连接
+```
+
+**ZCode**（`.zcode/mcp.json` 或全局 MCP 设置）：
+
+```json
+{ "mcpServers": { "microflow": { "command": "microflow-mcp", "args": [] } } }
+```
+
+**Claude Code**：`claude mcp add microflow -- microflow-mcp`
+**Cursor**（`~/.cursor/mcp.json`）：同 ZCode 的 JSON 结构。
+
+## 纪律（写给调用方 AI 工具）
+
+1. **不猜，查**：契约看 `microflow_schema`，影响看 `microflow_impact`，能力看 `microflow_capabilities`，诊断看 `microflow_diagnostics`。
+2. **门禁**：`check` 0 诊断才允许 `run`；每步附真实输出作为证据。
+3. **小步**：一个会话一个任务；`microflow_scaffold` 生成候选骨架后，先补 `[fill]` 段与真实映射，再过 `check`。
+4. **诚实**：`run` 输出 `meta.status` 才是业务终态；替身不算生产证据。
+
+## 测试
+
+```bash
+python -m pytest tests/ -q     # 12 项：协议握手、通知、12 工具清单、参数拒绝、
+                               # check/run/context 真项目往返、scaffold、stdio 端到端
+```
+
+## 边界声明
+
+- Flutter authoring 命令面暂未暴露为 MCP 工具（需要先建立文件化项目模型格式，独立设计轮次）。
+- `run` 强制 `--ephemeral`：本地演练边界，不产生耐久执行记录；生产耐久执行属宿主控制面（T14）。
+- `scaffold` 只写显式 `--into` 目录内的候选文件，不触碰注册表与既有源文件。

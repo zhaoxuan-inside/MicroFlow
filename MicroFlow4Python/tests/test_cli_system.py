@@ -13,7 +13,8 @@ from microflow import cli
 from microflow.codes import DIAGNOSTICS, PROTOCOL, describe_diagnostics
 
 EXPECTED_COMMANDS = {"capabilities", "check", "context", "describe", "diagnostics", "impact",
-                     "operators", "policy-check", "policy-schema", "run", "scaffold", "schema"}
+                     "operators", "policy-check", "policy-schema", "run", "scaffold", "schema",
+                     "test"}
 
 INTS = {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]}
 INT_LIST = {"type": "array", "items": {"type": "integer"}}
@@ -295,6 +296,225 @@ class ScaffoldCommandTests(unittest.TestCase):
                                       "--output-schema", "b"])
             self.assertEqual(code, 2)
             self.assertEqual(result["diagnostic"]["error_code"], "INVALID_OPERATOR_ID")
+
+
+class TestCommandTests(unittest.TestCase):
+    """`test` 命令：项目声明的回归输入输出对 + 算子契约用例（隔离执行，结构化用例结果）。"""
+
+    REJECT_MODULE = """
+def increment(input, output, context, metrix, debug, log):
+    output.set("n", input["n"] + 1)
+    return True
+
+def reject_even(input, output, context, metrix, debug, log):
+    if input["n"] % 2 == 0:
+        output.reject("EVEN_FORBIDDEN", "even values are not accepted")
+        return False
+    output.set("n", input["n"] * 10)
+    return True
+
+def register(registry):
+    registry.register_schema("ints", {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]})
+    registry.register_operator(name="increment", version="1", method=increment,
+                               input_schema="ints", output_schema="ints")
+    registry.register_operator(name="reject_even", version="1", method=reject_even,
+                               input_schema="ints", output_schema="ints")
+"""
+
+    def _project(self, root, tests, module=MODULE):
+        (root / "ops.py").write_text(module, encoding="utf-8")
+        project = root / "project.json"
+        project.write_text(json.dumps({"modules": ["ops.py"], "flows": flows(), "tests": tests}),
+                           encoding="utf-8")
+        return project
+
+    def test_flow_regression_pairs_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-001", "kind": "flow", "flow": "double", "input": {"n": 1},
+                 "expectOutput": {"n": 3}, "source": "PRD R-001"},
+                {"id": "T-002", "kind": "flow", "flow": "main", "input": {"n": 1, "items": [1]},
+                 "expectOutput": {"n": 4}, "source": "PRD R-002"},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 0)
+            self.assertEqual(result["tests"], {"total": 2, "passed": 2, "failed": 0})
+            self.assertEqual([c["status"] for c in result["cases"]], ["passed", "passed"])
+            self.assertEqual(result["releaseId"], result.get("releaseId"))
+
+    def test_flow_mismatch_reports_failure_detail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-100", "kind": "flow", "flow": "double", "input": {"n": 1},
+                 "expectOutput": {"n": 3, "absent.path": True}, "source": "WRONG sample"},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 1)
+            self.assertEqual(result["tests"], {"total": 1, "passed": 0, "failed": 1})
+            reasons = {f["reason"]: f for f in result["cases"][0]["failures"]}
+            self.assertEqual(reasons["output-mismatch"]["path"], "absent.path")
+            self.assertFalse(reasons["output-mismatch"]["present"])
+            self.assertEqual(reasons["output-mismatch"]["expected"], True)
+            status = [f for f in result["cases"][0]["failures"] if f["reason"] == "status-mismatch"]
+            self.assertEqual(status, [])
+
+    def test_status_mismatch_and_bool_strictness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-200", "kind": "flow", "flow": "double", "input": {"n": 1},
+                 "expectStatus": "FAILED", "source": "declared rejection path"},
+                {"id": "T-201", "kind": "flow", "flow": "double", "input": {"n": 1},
+                 "expectOutput": {"n": True}, "source": "type-strict negative"},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 1)
+            by_id = {c["id"]: c for c in result["cases"]}
+            status = {f["reason"]: f for f in by_id["T-200"]["failures"]}
+            self.assertEqual(status["status-mismatch"]["actual"], "SUCCEEDED")
+            strict = {f["reason"]: f for f in by_id["T-201"]["failures"]}
+            self.assertEqual(strict["output-mismatch"]["expected"], True)
+            self.assertEqual(strict["output-mismatch"]["actual"], 3)  # double(1): 1→2→3
+
+    def test_operator_contract_cases_with_rejection_and_exception(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tests = [
+                {"id": "T-300", "kind": "operator", "operator": "reject_even@1",
+                 "source": "confirmed sample 2026-11-01",
+                 "cases": [
+                     {"input": {"n": 3}, "expectOutput": {"n": 30}},
+                     {"input": {"n": 2}, "expectAccepted": False},
+                     {"input": {"n": 4}, "expectAccepted": True},
+                 ]},
+                {"id": "T-301", "kind": "operator", "operator": "increment@1",
+                 "source": "PRD R-003",
+                 "cases": [{"input": {"n": 1}, "expectOutput": {"n": 2}}]},
+            ]
+            # increment 在 reject_even 模块里同样存在；用本模块构建项目
+            (root := Path(tmp) / "p").mkdir()
+            module = self.REJECT_MODULE
+            flows_here = [{"id": "double", "input_schema": "ints", "output_schema": "ints", "nodes": {
+                "first": {"operator": "increment@1", "inputs": {"n": {"from": "flow.input.n", "required": True}}}},
+                "outputs": {"n": {"from": "nodes.first.output.data.n", "required": True}}}]
+            (root / "ops.py").write_text(module, encoding="utf-8")
+            project = root / "project.json"
+            project.write_text(json.dumps({"modules": ["ops.py"], "flows": flows_here, "tests": tests}),
+                               encoding="utf-8")
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 1)
+            by_name = {(c["id"], c["name"]): c for c in result["cases"]}
+            self.assertEqual(by_name[("T-300", "reject_even@1#1")]["status"], "passed")
+            self.assertEqual(by_name[("T-300", "reject_even@1#2")]["status"], "passed")
+            case3 = by_name[("T-300", "reject_even@1#3")]
+            self.assertEqual(case3["status"], "failed")
+            self.assertEqual(case3["failures"][0]["reason"], "accepted-mismatch")
+            self.assertEqual(by_name[("T-301", "increment@1#1")]["status"], "passed")
+
+    def test_operator_exception_is_a_failed_case_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            module = """
+def increment(input, output, context, metrix, debug, log):
+    output.set("n", input["n"] + 1)
+    return True
+
+def boom(input, output, context, metrix, debug, log):
+    raise RuntimeError("exploded")
+
+def register(registry):
+    registry.register_schema("ints", {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]})
+    registry.register_operator(name="increment", version="1", method=increment,
+                               input_schema="ints", output_schema="ints")
+    registry.register_operator(name="boom", version="1", method=boom,
+                               input_schema="ints", output_schema="ints")
+"""
+            tests = [{"id": "T-400", "kind": "operator", "operator": "boom@1", "source": "negative path",
+                      "cases": [{"input": {"n": 1}}]}]
+            root = Path(tmp)
+            flows_here = [{"id": "double", "input_schema": "ints", "output_schema": "ints", "nodes": {
+                "first": {"operator": "increment@1", "inputs": {"n": {"from": "flow.input.n", "required": True}}}},
+                "outputs": {"n": {"from": "nodes.first.output.data.n", "required": True}}}]
+            (root / "ops.py").write_text(module, encoding="utf-8")
+            project = root / "project.json"
+            project.write_text(json.dumps({"modules": ["ops.py"], "flows": flows_here, "tests": tests}),
+                               encoding="utf-8")
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 1)
+            case = result["cases"][0]
+            self.assertEqual(case["status"], "failed")
+            self.assertEqual(case["failures"][0]["reason"], "exception")
+
+    def test_source_declaration_is_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-500", "kind": "flow", "flow": "double", "input": {"n": 1}},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "INVALID_TEST_CONFIG")
+
+    def test_unknown_targets_and_duplicate_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-600", "kind": "flow", "flow": "ghost", "input": {"n": 1}, "source": "x"},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "UNKNOWN_TEST_TARGET")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-601", "kind": "operator", "operator": "ghost@9", "source": "x",
+                 "cases": [{"input": {}}]},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "UNKNOWN_TEST_TARGET")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-602", "kind": "flow", "flow": "double", "input": {"n": 1}, "source": "a"},
+                {"id": "T-602", "kind": "flow", "flow": "double", "input": {"n": 2}, "source": "b"},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "INVALID_TEST_CONFIG")
+
+    def test_dsl_project_declares_tests(self):
+        dsl = (
+            'module("ops.py")\n\n'
+            'tests([{"id": "T-700", "kind": "flow", "flow": "double", "input": {"n": 5},'
+            ' "expectOutput": {"n": 6}, "source": "PRD R-009"}])\n\n'
+            'with flow("double", input_schema="ints", output_schema="ints"):\n'
+            '    operator("first", operator="increment@1",'
+            ' inputs={"n": source("flow.input.n", required=True)})\n'
+            '    output("n", "nodes.first.output.data.n", required=True)\n'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "ops.py").write_text(MODULE, encoding="utf-8")
+            project = Path(tmp) / "project.mf"
+            project.write_text(dsl, encoding="utf-8")
+            code, result = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(code, 0)
+            self.assertEqual(result["tests"], {"total": 1, "passed": 1, "failed": 0})
+
+    def test_budget_exceeding_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-800", "kind": "flow", "flow": "double", "input": {"n": 1}, "source": "a"},
+                {"id": "T-801", "kind": "flow", "flow": "double", "input": {"n": 2}, "source": "b"},
+            ])
+            code, result = run_cli(["test", str(project), "--ephemeral", "--budget", "1"])
+            self.assertEqual(code, 2)
+            self.assertEqual(result["diagnostic"]["error_code"], "TEST_BUDGET_EXCEEDED")
+
+    def test_deterministic_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), [
+                {"id": "T-900", "kind": "flow", "flow": "double", "input": {"n": 1},
+                 "expectOutput": {"n": 2}, "source": "PRD R-010"},
+            ])
+            first = run_cli(["test", str(project), "--ephemeral"])
+            second = run_cli(["test", str(project), "--ephemeral"])
+            self.assertEqual(first, second)
 
 
 if __name__ == "__main__":

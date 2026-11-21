@@ -2,7 +2,7 @@
 
 把 MicroFlow CLI 包装为 **MCP（Model Context Protocol）工具服务器**，让 AI 编程工具（ZCode、Claude Code、Cursor 等）直接调用框架命令面。设计约束（归档 CLI 命令体系设计 §1.1）：协议适配层在框架之外——零依赖内核不感知 MCP，本包只依赖标准库。
 
-## 工具面（12 个，逐一对应 CLI 命令）
+## 工具面（13 个，逐一对应 CLI 命令）
 
 | 工具 | CLI | 用途 |
 |---|---|---|
@@ -13,6 +13,7 @@
 | `microflow_policy_check` | policy-check | 校验一个策略层 |
 | `microflow_check` | check | 编译 + 静态校验（**0 诊断才继续**） |
 | `microflow_run` | run | 本地演练执行（强制 `--ephemeral`；调用成功 ≠ 业务成功） |
+| `microflow_test` | test | 隔离执行项目声明的回归输入输出对与算子契约用例（每条预期必须声明来源） |
 | `microflow_operators` | operators | 算子目录（契约/能力/策略/引用计数） |
 | `microflow_schema` | schema | 查询一个契约 Schema |
 | `microflow_impact` | impact | 静态影响预览（改契约前必看） |
@@ -49,7 +50,7 @@ microflow-mcp                   # stdio 模式，等待客户端连接
 ## 测试
 
 ```bash
-python -m pytest tests/ -q     # 12 项：协议握手、通知、12 工具清单、参数拒绝、
+python -m pytest tests/ -q     # 12 项：协议握手、通知、13 工具清单、参数拒绝、
                                # check/run/context 真项目往返、scaffold、stdio 端到端
 ```
 
