@@ -1,0 +1,11 @@
+{
+  "specVersion": 1,
+  "project": "demo-product",
+  "requirements": [
+    { "id": "R-001", "title": "登录", "statement": "…", "priority": "urgent", "status": "open", "owner": "alice" }
+  ],
+  "scenarios": [
+    { "id": "S-001", "title": "登录成功路径", "kind": "backend_run", "requirementRefs": ["R-404"], "expectation": { "input": {} } },
+    { "id": "S-001", "title": "重复 id", "kind": "manual", "requirementRefs": ["R-001"], "expectation": { "note": "x" } }
+  ]
+}

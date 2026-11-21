@@ -1,0 +1,40 @@
+{
+  "specVersion": 1,
+  "project": "demo-product",
+  "requirements": [
+    { "id": "R-001", "title": "登录", "statement": "已注册用户以正确凭据登录后进入工作台；错误凭据停留登录页并提示。", "priority": "must", "status": "open" },
+    { "id": "R-002", "title": "工作台概览", "statement": "登录后工作台显示核心 KPI 与最近运行列表。", "priority": "should", "status": "open" },
+    { "id": "R-003", "title": "合规审查", "statement": "季度合规审查通过后方可上线新支付渠道。", "priority": "must", "status": "open" }
+  ],
+  "scenarios": [
+    {
+      "id": "S-001",
+      "title": "登录成功路径",
+      "kind": "backend_run",
+      "requirementRefs": ["R-001"],
+      "carriers": [{ "kind": "flow", "id": "auth.login" }, { "kind": "operator", "id": "verify_password" }],
+      "expectation": { "flow": "auth.login", "input": { "username": "alice", "password": "secret" }, "expectOutput": { "data.user_id": "u-1" }, "expectMetaStatus": "SUCCESS" }
+    },
+    {
+      "id": "S-002",
+      "title": "登录页 UI 路径",
+      "kind": "ui_script",
+      "requirementRefs": ["R-001"],
+      "expectation": { "script": "verify/login.json" }
+    },
+    {
+      "id": "S-003",
+      "title": "工作台概览场景执行",
+      "kind": "orch_scenario",
+      "requirementRefs": ["R-002"],
+      "expectation": { "scenario": "dashboard.overview", "expectStatus": "SUCCESS" }
+    },
+    {
+      "id": "S-004",
+      "title": "合规人审",
+      "kind": "manual",
+      "requirementRefs": ["R-003"],
+      "expectation": { "note": "法务季度审查记录归档" }
+    }
+  ]
+}

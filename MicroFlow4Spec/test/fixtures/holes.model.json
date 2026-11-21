@@ -1,0 +1,12 @@
+{
+  "specVersion": 1,
+  "project": "demo-product",
+  "requirements": [
+    { "id": "R-100", "title": "无场景需求", "statement": "这条需求还没有任何验收场景。", "priority": "must", "status": "open" },
+    { "id": "R-101", "title": "已覆盖需求", "statement": "有一个场景挂接。", "priority": "should", "status": "open" }
+  ],
+  "scenarios": [
+    { "id": "S-800", "title": "覆盖 R-101", "kind": "manual", "requirementRefs": ["R-101"], "expectation": { "note": "人审" } },
+    { "id": "S-900", "title": "孤儿场景", "kind": "ui_script", "requirementRefs": [], "expectation": { "script": "verify/orphan.json" } }
+  ]
+}

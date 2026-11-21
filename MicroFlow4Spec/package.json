@@ -1,0 +1,24 @@
+{
+  "name": "microflow4spec",
+  "version": "0.1.0",
+  "description": "MicroFlow 需求与验收基线：需求条目 → 验收场景 → 追踪矩阵，机器可判定（spec check/coverage/verify/diff）。",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=22.7" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "spec": "node src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

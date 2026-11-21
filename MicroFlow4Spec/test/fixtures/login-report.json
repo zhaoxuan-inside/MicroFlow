@@ -1,0 +1,10 @@
+{
+  "envelope": "microflow-verify-v1",
+  "script": "verify/login.json",
+  "verdict": "pass",
+  "assertions": [
+    { "id": "a1", "step": 1, "kind": "expect_route", "verdict": "pass" },
+    { "id": "a2", "step": 4, "kind": "expect_event", "verdict": "pass" }
+  ],
+  "summary": { "total": 2, "passed": 2, "failed": 0 }
+}
