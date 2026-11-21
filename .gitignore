@@ -20,3 +20,4 @@ tsconfig.tsbuildinfo
 # 运行时数据（代码/配置/数据三分离：数据不入库）
 *.sqlite
 data/
+*.egg-info/
