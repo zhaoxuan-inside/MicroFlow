@@ -97,7 +97,9 @@ export async function runVerifyScript(options: RunVerifyOptions): Promise<Verify
             await surface.dispatch(step.node, step.event, { payload: step.payload, item: step.item });
             break;
           case 'fill':
-            // fill 语义 = Tier A input 的 change 载荷 {value}（与 DOM 渲染器同契约）。
+            // fill 语义镜像真实 DOM（Playwright fill 派发 input 事件）——
+            // 模型侧逐键同步绑定 input；change 仍派发以兼容失焦提交类绑定。
+            await surface.dispatch(step.node, 'input', { payload: { value: jsonSafe(step.value) } });
             await surface.dispatch(step.node, 'change', { payload: { value: jsonSafe(step.value) } });
             break;
           case 'expect_binding': {

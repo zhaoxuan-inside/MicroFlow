@@ -38,7 +38,7 @@
       "bindings": [
         {
           "id": "username-change",
-          "on": "username.change",
+          "on": "username.input",
           "concurrency": "reject-new",
           "actions": [{ "kind": "state", "target": "username", "value": { "ref": "payload.value" }, "scope": "page" }]
         },
