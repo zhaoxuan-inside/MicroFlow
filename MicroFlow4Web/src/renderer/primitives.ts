@@ -82,12 +82,14 @@ function defaultBuilders(): [string, MFPrimitiveBuilder][] {
       const level = str(ctx.props, 'level');
       const raw = ctx.props['text'];
       const text = raw === null || raw === undefined ? '' : `${raw}`;
+      const tone = str(ctx.props, 'tone');
+      const toneClass = tone ? ` mf-text--${tone}` : '';
       if (['h1', 'h2', 'h3', 'h4'].includes(level)) {
-        const h = el(level as 'h1', 'mf-text mf-text-heading');
+        const h = el(level as 'h1', `mf-text mf-text-heading${toneClass}`);
         h.textContent = text;
         return h;
       }
-      const span = el('span', 'mf-text');
+      const span = el('span', `mf-text${toneClass}`);
       span.textContent = text;
       if (str(ctx.props, 'align')) span.style.textAlign = str(ctx.props, 'align');
       return span;
@@ -158,6 +160,9 @@ function defaultBuilders(): [string, MFPrimitiveBuilder][] {
       if (typeof gap === 'number') div.style.gap = `${gap}px`;
       const align = str(ctx.props, 'align');
       if (align) div.dataset.align = align;
+      if (bool(ctx.props, 'center')) div.dataset.center = 'true';
+      const maxWidth = ctx.props['maxWidth'];
+      if (typeof maxWidth === 'number') div.style.maxWidth = `${maxWidth}px`;
       for (const child of view.children) div.appendChild(child);
       return div;
     }],
