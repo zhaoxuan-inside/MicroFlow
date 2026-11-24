@@ -1,7 +1,7 @@
 name: support-platforms
 on:
   push:
-    paths: ["MicroFlow4Orchestration/**", "MicroFlow4Ops/**", "MicroFlow4Bizops/**", "MicroFlow4Kit/**", ".github/workflows/support-platforms.yml"]
+    paths: ["MicroFlow4Orchestration/**", "MicroFlow4Ops/**", "MicroFlow4Bizops/**", "MicroFlow4Kit/**", "SupportPlatform/**", ".github/workflows/support-platforms.yml"]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,6 +23,16 @@ jobs:
           node node_modules/vite/bin/vite.js build
       - name: Pure logic tests
         run: npm test --prefix ${{ matrix.app }} --if-present
+  deploy-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install shell deps
+        run: pip install "fastapi>=0.115" uvicorn httpx pytest
+      - name: Deployment shell tests (traversal / cache / proxy / 502)
+        run: python -m pytest SupportPlatform/tests -q
   control-plane:
     runs-on: ubuntu-latest
     steps:
