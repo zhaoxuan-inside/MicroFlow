@@ -90,6 +90,32 @@ CREATE TABLE IF NOT EXISTS telemetry (
     payload TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_telemetry_event_at ON telemetry(event, at);
+CREATE TABLE IF NOT EXISTS registry_snapshots (
+    namespace TEXT NOT NULL,
+    group_key TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    content_digest TEXT NOT NULL,
+    release_id TEXT,
+    report TEXT NOT NULL,
+    first_seen_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (namespace, group_key)
+);
+CREATE TABLE IF NOT EXISTS registry_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    namespace TEXT NOT NULL,
+    group_key TEXT NOT NULL,
+    event_id TEXT NOT NULL UNIQUE,
+    aggregate_key TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    occurred_at TEXT,
+    payload TEXT NOT NULL,
+    batch_digest TEXT NOT NULL,
+    received_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_registry_events_lookup
+    ON registry_events(namespace, group_key, aggregate_key, sequence);
 """
 
 SESSION_TTL_HOURS = 12

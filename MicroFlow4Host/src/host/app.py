@@ -17,12 +17,13 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .database import HostDatabase
 from .handlers import (auth_login, auth_session, bizops_funnel, bizops_overview, bizops_retention,
-                       bizops_trend, ops_metrics, ops_runs_detail, ops_runs_list,
+                       bizops_trend, ops_events_list, ops_metrics, ops_runs_detail, ops_runs_list,
                        platform_audit_list, platform_envs_create, platform_envs_list,
                        platform_permissions_list, platform_projects_create, platform_projects_list,
                        platform_projects_update, platform_roles_create, platform_roles_list,
                        platform_scope_my, platform_tenants_create, platform_tenants_list,
-                       platform_users_create, platform_users_list)
+                       platform_users_create, platform_users_list, registry_publish,
+                       registry_stream)
 from .scenarios import DELEGATED_SCENARIOS_PREFIXES, SCENARIO_PERMISSIONS
 
 SCENARIOS = {
@@ -45,10 +46,13 @@ SCENARIOS = {
     "ops.runs.list": ops_runs_list,
     "ops.runs.detail": ops_runs_detail,
     "ops.metrics": ops_metrics,
+    "ops.events.list": ops_events_list,
     "bizops.overview": bizops_overview,
     "bizops.trend": bizops_trend,
     "bizops.funnel": bizops_funnel,
     "bizops.retention": bizops_retention,
+    "registry.publish": registry_publish,
+    "registry.stream": registry_stream,
 }
 
 TELEMETRY_MAX_PENDING = 10_000

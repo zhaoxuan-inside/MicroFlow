@@ -23,6 +23,7 @@ PERMISSION_CATALOG: tuple[dict[str, str], ...] = (
     {"permission": "experiment:read", "scope": "PROJECT"},
     {"permission": "configcenter:read", "scope": "PROJECT"},
     {"permission": "configcenter:write", "scope": "PROJECT"},
+    {"permission": "registry:write", "scope": "PLATFORM"},
     {"permission": "page:ops_console", "scope": "PLATFORM"},
     {"permission": "page:bizops_console", "scope": "PLATFORM"},
 )
@@ -48,10 +49,13 @@ SCENARIO_PERMISSIONS: dict[str, str | None] = {
     "ops.runs.list": "page:ops_console",
     "ops.runs.detail": "page:ops_console",
     "ops.metrics": "page:ops_console",
+    "ops.events.list": "page:ops_console",
     "bizops.overview": "page:bizops_console",
     "bizops.trend": "page:bizops_console",
     "bizops.funnel": "page:bizops_console",
     "bizops.retention": "page:bizops_console",
+    "registry.publish": "registry:write",
+    "registry.stream": "registry:write",
 }
 
 # 参考实现刻意不实现编排/实验/配置中心场景：它们由编排控制面（:8200）承载，

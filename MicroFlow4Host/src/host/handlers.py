@@ -1,14 +1,25 @@
-"""场景处理器：auth / governance / observability / bizops 的参考实现。
+"""场景处理器：auth / governance / observability / bizops / registry 的参考实现。
 
 处理器签名 (db, user, payload, context) -> data。所有治理写路径过审计。
+
+registry 两个写场景承载 MicroFlow4Registry 的客户端上报：
+- ``registry.publish``：发布快照（contentDigest 幂等，覆盖同 namespace+group 的旧快照）
+- ``registry.stream``：事件批（逐帧 event_id 去重 → at-least-once 接收侧兑现）
+摘要校验在宿主侧重算（canonical JSON + SHA-256），不信任客户端自报的完整性声明。
 """
+import hashlib
 import json
+import sqlite3
 from datetime import date, timedelta
 from typing import Any
 
-from .database import HostDatabase
+from .database import HostDatabase, _now
 from .scenarios import PERMISSION_CATALOG
 from .security import hash_password, verify_password
+
+REGISTRY_STREAM_PROTOCOL = "microflow-registry-stream-v1"
+REGISTRY_FRAME_KINDS = ("runtime_record", "event_intent")
+REGISTRY_MAX_FRAMES = 500
 
 
 def _require(payload: dict, key: str) -> Any:
@@ -20,6 +31,16 @@ def _require(payload: dict, key: str) -> Any:
 
 def _row_dict(row) -> dict:
     return dict(row)
+
+
+def _canonical(value) -> str:
+    """与 MicroFlow4Registry envelope.canonical 同一规范（跨进程摘要可比）。"""
+    return json.dumps(value, sort_keys=True, ensure_ascii=True,
+                      separators=(",", ":"), allow_nan=False)
+
+
+def _digest(value) -> str:
+    return hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
 # ---- auth ----
@@ -306,3 +327,112 @@ def bizops_retention(db: HostDatabase, user, payload: dict, context: dict) -> di
                 cohort[start][field] += 1
     return {"cohorts": cohort,
             "note": "D1/D7 按首访日的回访客户端计数；无身份足迹的客户端不参与（样本量随 cohorts 如实呈现）"}
+
+
+# ---- registry（MicroFlow4Registry 客户端的服务端兑现） ----------------------
+
+
+def registry_publish(db: HostDatabase, user, payload: dict, context: dict) -> dict:
+    """登记一份发布快照；contentDigest 幂等，digest 与内容不符直接 422。"""
+    namespace = _require(payload, "namespace")
+    group = _require(payload, "group")
+    digest_value = _require(payload, "digest")
+    content_digest = payload.get("contentDigest") or digest_value
+    report = payload.get("report")
+    if not isinstance(report, dict):
+        raise ValueError("report must be an object")
+    body = {key: value for key, value in report.items()
+            if key not in ("digest", "contentDigest", "meta")}
+    if digest_value != _digest(body):
+        raise ValueError("report digest does not match its content; re-run export instead of editing")
+
+    existing = db.query_one(
+        "SELECT content_digest, first_seen_at FROM registry_snapshots WHERE namespace = ? AND group_key = ?",
+        (namespace, group))
+    status = "unchanged" if existing and existing["content_digest"] == content_digest \
+        else ("updated" if existing else "registered")
+    now = _now()
+    first_seen = existing["first_seen_at"] if existing else now
+    db.execute(
+        "INSERT INTO registry_snapshots (namespace, group_key, digest, content_digest, release_id,"
+        " report, first_seen_at, updated_at) VALUES (?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(namespace, group_key) DO UPDATE SET digest = excluded.digest,"
+        " content_digest = excluded.content_digest, release_id = excluded.release_id,"
+        " report = excluded.report, updated_at = excluded.updated_at",
+        (namespace, group, digest_value, content_digest,
+         (report.get("project") or {}).get("releaseId"), json.dumps(report, ensure_ascii=True),
+         first_seen, now))
+    return {"status": status, "namespace": namespace, "group": group,
+            "digest": digest_value, "contentDigest": content_digest,
+            "assets": len(report.get("assets") or [])}
+
+
+def registry_stream(db: HostDatabase, user, payload: dict, context: dict) -> dict:
+    """接收一批事件帧；event_id 唯一约束兑现 at-least-once 的接收侧去重。"""
+    namespace = _require(payload, "namespace")
+    group = _require(payload, "group")
+    batch = payload.get("batch")
+    if not isinstance(batch, dict) or batch.get("protocol") != REGISTRY_STREAM_PROTOCOL:
+        raise ValueError(f"batch must speak {REGISTRY_STREAM_PROTOCOL}")
+    frames = batch.get("frames")
+    if not isinstance(frames, list) or not frames:
+        raise ValueError("batch.frames must be a nonempty array")
+    if len(frames) > REGISTRY_MAX_FRAMES:
+        raise ValueError(f"batch exceeds {REGISTRY_MAX_FRAMES} frames")
+    if payload.get("count") != len(frames):
+        raise ValueError("count does not match the frames")
+    body = {key: value for key, value in batch.items() if key != "contentDigest"}
+    if batch.get("contentDigest") != _digest(body):
+        raise ValueError("batch contentDigest does not match its frames")
+    if batch.get("namespace") != namespace or batch.get("group") != group:
+        raise ValueError("batch addressing disagrees with the payload addressing")
+
+    accepted = duplicates = 0
+    for index, frame in enumerate(frames):
+        if not isinstance(frame, dict):
+            raise ValueError(f"frame {index} must be an object")
+        for key in ("eventId", "aggregateKey", "kind"):
+            if not isinstance(frame.get(key), str) or not frame[key]:
+                raise ValueError(f"frame {index} lacks a string {key}")
+        if type(frame.get("sequence")) is not int or frame["sequence"] < 1:
+            raise ValueError(f"frame {index} sequence must be a positive integer")
+        if frame["kind"] not in REGISTRY_FRAME_KINDS:
+            raise ValueError(f"frame {index} kind must be one of {REGISTRY_FRAME_KINDS}")
+        occurred_at = frame.get("occurredAt")
+        try:
+            db.execute(
+                "INSERT INTO registry_events (namespace, group_key, event_id, aggregate_key,"
+                " sequence, kind, occurred_at, payload, batch_digest, received_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (namespace, group, frame["eventId"], frame["aggregateKey"], frame["sequence"],
+                 frame["kind"], occurred_at if isinstance(occurred_at, str) else None,
+                 json.dumps(frame.get("payload"), ensure_ascii=True, sort_keys=True),
+                 batch["contentDigest"], _now()))
+        except sqlite3.IntegrityError:
+            duplicates += 1
+        else:
+            accepted += 1
+    return {"status": "registered" if accepted else "unchanged",
+            "accepted": accepted, "duplicates": duplicates, "count": len(frames)}
+
+
+def ops_events_list(db: HostDatabase, user, payload: dict, context: dict) -> dict:
+    """registry 事件流的读面：Ops 瀑布/检索按聚合键取真实帧。"""
+    clauses, params = [], []
+    for key, column in (("namespace", "namespace"), ("group", "group_key"),
+                        ("aggregate_key", "aggregate_key")):
+        if payload.get(key):
+            clauses.append(f"{column} = ?")
+            params.append(payload[key])
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    limit = min(int(payload.get("limit", 100)), 500)
+    offset = max(int(payload.get("offset", 0)), 0)
+    total = db.query_one(f"SELECT COUNT(*) AS n FROM registry_events {where}", tuple(params))["n"]
+    rows = db.query(
+        f"SELECT seq, namespace, group_key, event_id, aggregate_key, sequence, kind, occurred_at,"
+        f" payload, batch_digest, received_at FROM registry_events {where}"
+        f" ORDER BY seq DESC LIMIT ? OFFSET ?", (*params, limit, offset))
+    return {"events": [{**_row_dict(row), "group": row["group_key"],
+                        "payload": json.loads(row["payload"])} for row in rows],
+            "total": total, "limit": limit, "offset": offset,
+            "note": "at-least-once 投递：重发按 event_id 去重；seq 为接收序，非业务时序"}

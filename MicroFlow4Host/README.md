@@ -7,7 +7,8 @@
 ## 协议实现（对齐 HOST_CONTRACT.md）
 
 - **dispatch 单端点** `POST /api/v1/dispatch`：信封 `{code, data, message, trace_id}`；身份只来自 `Authorization: Bearer` 或 `context.token`——**`context.user_id` 不被信任**（测试固定）。
-- **场景清单**：auth.\* / platform.scope.my / 治理（tenants/projects/users/roles/envs/audit）/ ops.runs.\*·ops.metrics / bizops.\*；`orchestration.*`、`experiment.*`、`configcenter.*` 由编排控制面承载，本参考实现**诚实 501**（不做占位实现）。
+- **场景清单**：auth.\* / platform.scope.my / 治理（tenants/projects/users/roles/envs/audit）/ ops.runs.\*·ops.metrics·ops.events.list / bizops.\* / **registry.publish·registry.stream**；`orchestration.*`、`experiment.*`、`configcenter.*` 由编排控制面承载，本参考实现**诚实 501**（不做占位实现）。
+- **registry 承载**（`MicroFlow4Registry` 客户端的服务端兑现）：`registry.publish` 落 `registry_snapshots`（`contentDigest` 幂等：registered/updated/unchanged）、`registry.stream` 落 `registry_events`（`event_id` 唯一约束兑现 at-least-once 接收侧去重）；两侧**宿主重算 canonical JSON + SHA-256 摘要**，不信任客户端自报完整性；`ops.events.list` 按聚合键检索真实帧（Ops 瀑布数据源）。权限点 `registry:write`（新入目录）。
 - **权限点目录**：17 个权限点单一来源（`scenarios.py`），场景→权限映射 + 用户-角色三级 scope（PLATFORM/TENANT/PROJECT）判定；治理写路径全部入审计。
 - **遥测接收端口** `POST /api/v1/telemetry`：信封批量接收（≤100/批），有界容量 10000，**过载显式 429**（TELEMETRY_OVERLOAD，不静默降级）；无效信封不落库、逐条计数如实返回。
 - **聚合**：ops.metrics 读时聚合真实分位；bizops 漏斗（足迹去重口径 + 样本量如实披露）、留存 D1/D7、趋势——与 Bizops 平台"口径诚实披露"纪律一致。

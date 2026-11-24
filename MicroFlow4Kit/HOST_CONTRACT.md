@@ -14,16 +14,16 @@
 | 编排目录 | `orchestration.catalog.*`，`orchestration.{operators,subgraphs,scenarios}.*`，`orchestration.locks.*`，`orchestration.approvals.*`，`orchestration.assets.copy`，`orchestration.dag.list` | 三层资产目录全生命周期（写走 `OPC_ORCHESTRATION_CATALOG_PIPELINE`，项目隔离 + 排他锁） |
 | 实验域 | `experiment.list/detail/create/update/status/delete/assign/outcome.report/readout` | A/B 实验（写/分流走 `OPC_EXPERIMENT_PIPELINE`） |
 | 配置中心 | `configcenter.namespaces.*`，`configcenter.items.*`，`configcenter.resolve` | 灰度发布与按环境解析（写走 `OPC_CONFIGCENTER_PIPELINE`） |
-| 运维 | `ops.runs.list/detail/metrics`，`platform.audit.list` | 运行记录/指标/审计 |
+| 运维 | `ops.runs.list/detail/metrics`，`ops.events.list`，`platform.audit.list` | 运行记录/指标/审计/注册事件帧检索 |
 | 运营 | `bizops.overview/actions/trend/funnel/retention` | 真实数据聚合 |
-| 注册（可选） | `registry.publish` | `MicroFlow4Registry` 上报发布快照元数据（`{namespace, group, digest, contentDigest, report}`）；按 `contentDigest` 幂等，同 key 异摘要由宿主拒绝。宿主未实现时返回 404/501，客户端如实报 `PUSH_FAILED` |
-| 注册（可选） | `registry.stream` | 事件批上报（`{namespace, group, contentDigest, count, batch}`，信封 `microflow-registry-stream-v1`，逐帧 `eventId`）。**投递语义 at-least-once**，消费者按 `eventId` 去重；宿主按 `contentDigest` 幂等接收，过载回 429。未实现时 404/501 |
+| 注册（可选） | `registry.publish` | `MicroFlow4Registry` 上报发布快照元数据（`{namespace, group, digest, contentDigest, report}`）；按 `contentDigest` 幂等（registered/updated/unchanged），宿主**重算 digest** 不信任自报完整性，内容不符 422。`MicroFlow4Host` 已含参考服务端 |
+| 注册（可选） | `registry.stream` | 事件批上报（`{namespace, group, contentDigest, count, batch}`，信封 `microflow-registry-stream-v1`，逐帧 `eventId`）。**at-least-once**：宿主按 `event_id` 唯一约束去重（重发计 duplicates）；宿主重算批摘要、核对寻址一致，帧超 500 拒 422。`MicroFlow4Host` 已含参考服务端（落 `registry_events`，经 `ops.events.list` 读出） |
 
 ## 权限点目录（宿主 RBAC 需实现）
 
 `platform:tenant_manage/user_manage/role_manage/audit_read`、`tenant:member_manage/project_create/role_manage`、
 `project:manage/member_manage`、`orchestration:read/write`、`experiment:manage/read`、`configcenter:read/write`、
-`page:ops_console/page:bizops_console`。scope 语义：PLATFORM 全局 / TENANT 租户内 / PROJECT 项目内；
+`registry:write`、`page:ops_console/page:bizops_console`。scope 语义：PLATFORM 全局 / TENANT 租户内 / PROJECT 项目内；
 活动环境 `staging/online` 为保护级（发布/回滚要求项目所有者角色）。
 
 ## 控制面承载能力（编排控制面 `/api/*`，非宿主 dispatch）
