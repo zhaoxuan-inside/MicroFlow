@@ -68,6 +68,7 @@ MicroFlow 是面向 VibeCoding 开发方式（AI 结对编程）的业务框架�
         └── 上层工具/AI ＜──── 零埋点运营事件 ──── 遥测接收（业务层承载）
 
 VibeCoding 工具接入：[MCP 桥] CLI 12 命令 → MCP 工具（框架外适配层，零依赖 stdio）
+注册面：[Registry 投影] CLI 只读面 → microflow-registry-v1 报告 → 宿主 dispatch（按 contentDigest 幂等）
 支撑平台：编排管理（控制面承载）· 运维（含告警中心）· 运营 ── MicroFlow4Kit 共享底座
 ```
 
@@ -123,6 +124,7 @@ VibeCoding 工具接入：[MCP 桥] CLI 12 命令 → MCP 工具（框架外适�
 - **MicroFlow4Flutter**（总包 64 项 + 各包测试）：Level 0（模型/契约/校验/i18n/Token/主题/布局静态面）与 Level 1（解释运行时/Tier A+B 渲染/覆盖链）**已实现**；Level 2 协议面部分实现（遥测/实验/Debug/Fact/Recovery/Ingest/Query 参考实现）；阶段六最小命令闭环已实现；基线覆盖 23/32（另 4 条部分）；**未实现**：编译模式产物、发布快照构建器与性能门禁、增量构建、运行期注入通道。
 - **支撑平台**（Orchestration/Ops/Bizops + Kit，2026-11 收口）：编排管理平台迁移到**自有控制面**（FastAPI `:8200` + PostgreSQL，独立账号/锁/E2E 阶段门禁/第二人审批/回滚指针 env_current）——实验域、配置中心（灰度）、告警最小闭环（规则求值挂接 debug I/O 上报与场景执行）由控制面承载；运维平台新增告警中心页；`config_hash` 为 SHA-256 内容寻址。哈希/审批/回滚语义见 `MicroFlow4Kit/HOST_CONTRACT.md`。集成测试需 PostgreSQL（缺失时显式跳过）。
 - **VibeCoding 工具接入**（`MicroFlow4MCP`）：CLI 全部 13 命令经零依赖 stdio MCP 服务器暴露为工具（capabilities/check/run/test/context/scaffold 等），协议适配在框架外，内核不感知 MCP。
+- **注册面**（`MicroFlow4Registry`，2026-11-23）：零依赖投影包，两个方向两种信封——**快照**（`export`/`push`，`microflow-registry-v1`，按 `contentDigest` 幂等）与**事件流**（`stream`，`microflow-registry-stream-v1`，逐帧内容派生 `eventId`，outbox 先落盘后发送、at-least-once、`--replay` 按序补发）；库侧 `RecordStream` 适配 `record_sink`（同步回调内零 IO、队列满计数丢弃、后台线程冲刷）。只读调用 CLI（`check` 门禁 → `operators`/`policy-schema` 投影），产出确定性报告。借鉴 Spring Boot 外部化配置/条件装配/失败隔离与 Nacos 三元寻址/元数据附着/客户端快照降级；**不做心跳与服务发现**，也**不引入 MQ**（传输留作 provider，等第二个物理消费者出现再换）。如实边界：生效策略暂不可上报（CLI 未暴露，不重算）；`registry.*` 服务端由宿主/控制面承载；`release_id` 含绝对源码路径（跨机器变），可移植键用 `contentDigest`。44 项测试全绿。
 - **全周期补全**（`MicroFlow4Spec` / `MicroFlow4Verify` / `MicroFlow4Delivery` / `MicroFlow4Host`，2026-11 落地，分析基线见根目录 [LIFECYCLE.md](LIFECYCLE.md)）：需求→验收基线结构化（spec.model.json + 追踪矩阵门禁）；UI 端到端验收执行器（声明式脚本在 4Web 真实运行时执行，`microflow-verify-v1` 信封；flutter 面与 DOM 截图断言属后续切片）；应用产物交付流水线（SHA-256 内容寻址仓库 + 环境链守卫 + 三证据门禁 + 第二人审批）；宿主参考实现（HOST_CONTRACT 的可运行起点：dispatch 网关、17 权限点 RBAC、遥测接收过载显式拒绝、ops/bizops 读时聚合、SPA 托管、scaffold——编排/实验/配置中心场景由编排控制面承载，未接线时诚实 501）。
 - 两侧共同边界：写入型算子与真实介质验证未开放；内存替身只验证协议。
 
@@ -133,6 +135,7 @@ VibeCoding 工具接入：[MCP 桥] CLI 12 命令 → MCP 工具（框架外适�
 | [MicroFlow4Python](MicroFlow4Python/README.md) | 后端执行框架：契约算子、静态编译、状态协调协议；零三方依赖 | [开发手册](MicroFlow4Python/DEVELOPER_GUIDE.md) |
 | [MicroFlow4Flutter](MicroFlow4Flutter/README.md) | 前端框架：统一资源注册、解释运行时、Tier A/B 渲染、命令面 | [开发手册](MicroFlow4Flutter/DEVELOPER_GUIDE.md) |
 | [MicroFlow4MCP](MicroFlow4MCP/README.md) | **VibeCoding 工具接入桥**：CLI 12 命令 → MCP 工具（零依赖 stdio，框架外适配层） | README（接入配置） |
+| [MicroFlow4Registry](MicroFlow4Registry/README.md) | **注册面**：发布快照 + 事件流元数据 → 平台（快照按内容摘要幂等；事件批 at-least-once + outbox 重放） | README + AGENTS.md |
 | [MicroFlow4Orchestration](MicroFlow4Orchestration/README.md) | 编排管理平台：三层资产目录全生命周期 + 自有控制面（审批/回滚/实验/配置中心/告警求值） | AGENTS.md（架构事实） |
 | [MicroFlow4Ops](MicroFlow4Ops/README.md) | 运维平台：运行瀑布/指标看板/审计/调试工作台/**告警中心** | AGENTS.md |
 | [MicroFlow4Bizops](MicroFlow4Bizops/README.md) | 运营平台：KPI/趋势/漏斗/留存/实验读出（口径诚实披露） | AGENTS.md |

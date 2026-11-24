@@ -16,6 +16,8 @@
 | 配置中心 | `configcenter.namespaces.*`，`configcenter.items.*`，`configcenter.resolve` | 灰度发布与按环境解析（写走 `OPC_CONFIGCENTER_PIPELINE`） |
 | 运维 | `ops.runs.list/detail/metrics`，`platform.audit.list` | 运行记录/指标/审计 |
 | 运营 | `bizops.overview/actions/trend/funnel/retention` | 真实数据聚合 |
+| 注册（可选） | `registry.publish` | `MicroFlow4Registry` 上报发布快照元数据（`{namespace, group, digest, contentDigest, report}`）；按 `contentDigest` 幂等，同 key 异摘要由宿主拒绝。宿主未实现时返回 404/501，客户端如实报 `PUSH_FAILED` |
+| 注册（可选） | `registry.stream` | 事件批上报（`{namespace, group, contentDigest, count, batch}`，信封 `microflow-registry-stream-v1`，逐帧 `eventId`）。**投递语义 at-least-once**，消费者按 `eventId` 去重；宿主按 `contentDigest` 幂等接收，过载回 429。未实现时 404/501 |
 
 ## 权限点目录（宿主 RBAC 需实现）
 
