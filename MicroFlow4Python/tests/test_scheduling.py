@@ -7,7 +7,7 @@ from microflow.idempotency import OperationScope
 from microflow.persistence import StorageBinding, CommitReceipt, RecoveryView
 from microflow.scheduling import ExecutionCommands
 from microflow.testing import MemoryStateStore
-from microflow.values import digest, thaw
+from microflow.values import digest
 from tests.test_compiler import registry, flow, EPHEMERAL
 from tests.test_policy import DURABLE
 from microflow.compiler import compile_release
@@ -162,6 +162,34 @@ class SchedulingTests(unittest.TestCase):
         definition['nodes']['after'] = {'operator': 'increment@1', 'depends_on': ['peer'],
                                        'inputs': {'n': {'from': 'nodes.peer.output.data.n'}}}
         return definition
+
+    def test_real_scheduling_path_feeds_the_delivery_pump_faces(self):
+        # 接缝守卫：真实调度路径产生的意图（_batch 随状态批原子提交）必须能被
+        # pending_events 看到、被 acknowledge_event 翻账——键前缀或意图形状
+        # 漂移在这里立刻红灯，而不是在宿主泵上线后静默断流。
+        commands, _ = self.make()
+        execution = self.accept(commands)
+        pending = commands.coordinator.pending_events()
+        self.assertEqual(len(pending), 1)
+        intent = pending[0]
+        self.assertEqual(intent["event_type"], "microflow.execution")
+        self.assertEqual(intent["aggregate_key"], execution)
+        self.assertEqual(intent["delivery"], "PENDING")
+        self.assertTrue(intent["content_digest"])
+
+        request = digest({"ack": intent["event_id"], "attempt": 1})
+        outcome = commands.coordinator.acknowledge_event(
+            intent["event_id"], intent["content_digest"], request_id=request)
+        self.assertEqual(outcome["status"], "delivered")
+        self.assertEqual(commands.coordinator.pending_events(), ())
+
+        # 泵视角的重试：同请求重放返回既有结果，新请求是已记录的 no-op。
+        self.assertEqual(commands.coordinator.acknowledge_event(
+            intent["event_id"], intent["content_digest"], request_id=request)["status"], "delivered")
+        self.assertEqual(commands.coordinator.acknowledge_event(
+            intent["event_id"], intent["content_digest"],
+            request_id=digest({"ack": intent["event_id"], "attempt": 2}))["status"],
+            "already-delivered")
 
     def test_admission_is_distinct_from_completion_and_replays_original(self):
         commands, store = self.make()

@@ -91,6 +91,8 @@ _SUMMARIES = {
     "METRIC_LIMIT": "Metric record exceeds its budget",
     "INVALID_EVENT": "Event payload violates its schema",
     "EVENT_LIMIT": "Event exceeds its budget",
+    "UNKNOWN_EVENT": "Event intent does not exist",
+    "EVENT_ID_CONFLICT": "Event id or acknowledgement digest does not match the recorded intent",
     "INVALID_QUERY": "Query bounds or cursor are invalid",
     # 注册
     "REGISTRY_SEALED": "Registry is sealed after compilation",

@@ -1,10 +1,16 @@
 """Serialize pure state decisions; uncertain commits fence subsequent writes."""
 import threading
 import uuid
+from collections.abc import Mapping
 from dataclasses import replace
 from .errors import PersistenceError
 from .persistence import CommitReceipt, RecoveryView, StateBatch
 from .values import digest, thaw
+
+# Intents are committed as ``event-intent/<event_id>`` records by the
+# scheduling layer, atomically with the business change they describe.
+# The prefix is part of the state-store layout contract (scheduling.py).
+EVENT_INTENT_PREFIX = "event-intent/"
 
 
 class Coordinator:
@@ -38,6 +44,60 @@ class Coordinator:
         if not isinstance(view, RecoveryView) or view.cursor is not None or set(view.records) - {key}:
             raise PersistenceError("PROVIDER_PROTOCOL", "Invalid targeted recovery view")
         return view
+
+    def pending_events(self, limit=100):
+        """Pending delivery intents, oldest first (read face for the host pump).
+
+        The state store is the only delivery ledger: intents committed with the
+        business change stay ``delivery: PENDING`` until acknowledged. This is
+        a lock-free targeted read (``store.query`` over the intent prefix);
+        deterministic order is (recorded_at, event_id) so replays drain the
+        same way. Hosts inject the pump; the kernel never loops on delivery.
+        """
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise PersistenceError("INVALID_REQUEST", "limit must be between 1 and 1000")
+        view = self.store.query(EVENT_INTENT_PREFIX, limit=limit)
+        pending = [record for record in view.records.values()
+                   if isinstance(record, Mapping) and record.get("delivery") == "PENDING"]
+        pending.sort(key=lambda record: (record.get("recorded_at") or 0,
+                                         record.get("event_id") or ""))
+        return tuple(pending)
+
+    def acknowledge_event(self, event_id, content_digest, *, request_id,
+                          expected_revision=None):
+        """Mark one intent DELIVERED after the host confirmed actual delivery.
+
+        Single-book flip: the intent record in the state store is authoritative;
+        the transport settles its own bookkeeping before calling this. The
+        command is idempotent by ``request_id`` (replays return the stored
+        result) and re-acknowledging a delivered intent with a fresh request
+        id is a recorded no-op, so at-least-once pumps can retry freely.
+        """
+        for value, label in ((event_id, "event_id"), (content_digest, "content_digest"),
+                             (request_id, "request_id")):
+            if type(value) is not str or not value:
+                raise PersistenceError("INVALID_REQUEST", f"{label} must be a nonempty string")
+        command = {"operation": "acknowledge_event", "event_id": event_id,
+                   "content_digest": content_digest, "expected_revision": expected_revision}
+
+        def decide(view):
+            record = view.records.get(EVENT_INTENT_PREFIX + event_id)
+            if not isinstance(record, Mapping):
+                raise PersistenceError("UNKNOWN_EVENT", "Event intent does not exist",
+                                        request_id=request_id)
+            if record.get("content_digest") != content_digest:
+                raise PersistenceError("EVENT_ID_CONFLICT",
+                                       "Acknowledgement digest does not match event",
+                                       request_id=request_id)
+            if record.get("delivery") == "DELIVERED":
+                return None, {"status": "already-delivered", "event_id": event_id}
+            delivered = dict(record)
+            delivered["delivery"] = "DELIVERED"
+            batch = StateBatch({EVENT_INTENT_PREFIX + event_id: delivered})
+            return batch, {"status": "delivered", "event_id": event_id}
+
+        return self.transact(decide, request_id, request_digest=digest(command),
+                             expected_revision=expected_revision)
 
     def _receipt(self, receipt, request_id):
         if not isinstance(receipt, CommitReceipt) or receipt.request_id != request_id:

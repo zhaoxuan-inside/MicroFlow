@@ -40,6 +40,75 @@ class FaultStore(MemoryStateStore):
         return super().get_commit(request_id)
 
 
+class EventDeliveryFacesTests(unittest.TestCase):
+    """pending_events / acknowledge_event：状态库是唯一投递账本（D2）。"""
+
+    def _intent(self, event_id, sequence=1, aggregate="exec-1", delivery="PENDING"):
+        content = digest({"event": event_id, "sequence": sequence})
+        return {"protocol": "microflow-event-v1", "event_id": event_id,
+                "event_type": "microflow.execution", "schema_version": "1",
+                "aggregate_key": aggregate, "sequence": sequence, "payload": {},
+                "execution_id": aggregate, "release_id": "r", "occurred_at": 1.0,
+                "recorded_at": float(sequence), "content_digest": content,
+                "delivery": delivery}
+
+    def _write(self, coordinator, intent):
+        def decide(view):
+            return StateBatch({"event-intent/" + intent["event_id"]: intent}), {"ok": True}
+        return coordinator.transact(decide, request_id="write-" + intent["event_id"],
+                                    request_digest=digest({"write": intent["event_id"]}))
+
+    def _coordinator(self):
+        return Coordinator(MemoryStateStore())
+
+    def test_pending_returns_only_pending_in_recorded_order(self):
+        coordinator = self._coordinator()
+        self._write(coordinator, self._intent("a", sequence=3))
+        self._write(coordinator, self._intent("b", sequence=1, delivery="DELIVERED"))
+        self._write(coordinator, self._intent("c", sequence=2))
+        pending = coordinator.pending_events()
+        self.assertEqual([record["event_id"] for record in pending], ["c", "a"])  # recorded_at 最旧优先
+        self.assertEqual(pending[0]["delivery"], "PENDING")
+
+    def test_acknowledge_flips_and_replays_return_the_stored_result(self):
+        coordinator = self._coordinator()
+        intent = self._intent("evt-1")
+        self._write(coordinator, intent)
+        request = digest({"ack": "evt-1", "attempt": 1})
+        first = coordinator.acknowledge_event("evt-1", intent["content_digest"], request_id=request)
+        self.assertEqual(first, {"status": "delivered", "event_id": "evt-1"})
+        self.assertEqual(coordinator.pending_events(), ())
+        replay = coordinator.acknowledge_event("evt-1", intent["content_digest"], request_id=request)
+        self.assertEqual(replay, first)
+
+    def test_reacknowledge_with_a_fresh_request_is_a_recorded_noop(self):
+        coordinator = self._coordinator()
+        intent = self._intent("evt-2")
+        self._write(coordinator, intent)
+        coordinator.acknowledge_event("evt-2", intent["content_digest"],
+                                      request_id=digest({"ack": "evt-2", "attempt": 1}))
+        second = coordinator.acknowledge_event("evt-2", intent["content_digest"],
+                                                request_id=digest({"ack": "evt-2", "attempt": 2}))
+        self.assertEqual(second, {"status": "already-delivered", "event_id": "evt-2"})
+
+    def test_digest_mismatch_and_unknown_events_are_rejected(self):
+        coordinator = self._coordinator()
+        intent = self._intent("evt-3")
+        self._write(coordinator, intent)
+        with self.assertRaisesRegex(PersistenceError, "EVENT_ID_CONFLICT"):
+            coordinator.acknowledge_event("evt-3", "0" * 64, request_id=digest({"ack": "bad"}))
+        with self.assertRaisesRegex(PersistenceError, "UNKNOWN_EVENT"):
+            coordinator.acknowledge_event("missing", intent["content_digest"],
+                                          request_id=digest({"ack": "missing"}))
+
+    def test_argument_validation_is_explicit(self):
+        coordinator = self._coordinator()
+        with self.assertRaisesRegex(PersistenceError, "INVALID_REQUEST"):
+            coordinator.pending_events(limit=0)
+        with self.assertRaisesRegex(PersistenceError, "INVALID_REQUEST"):
+            coordinator.acknowledge_event("", "d", request_id="r")
+
+
 class CoordinatorTests(unittest.TestCase):
     def test_replay_returns_original_result_without_deciding(self):
         store = MemoryStateStore()

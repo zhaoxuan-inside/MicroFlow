@@ -3,6 +3,7 @@ from dataclasses import asdict
 from collections.abc import Mapping
 import math
 from .errors import ContractError, PersistenceError
+from .coordinator import EVENT_INTENT_PREFIX
 from .paths import Field, map_values, parse
 from .persistence import StateBatch, StorageBinding
 from .events import EventIntent
@@ -143,7 +144,7 @@ class ExecutionCommands:
                   "owner": asdict(self.coordinator.owner), "release_id": run["release_id"],
                   "status": run["status"], "delivery": "PENDING",
                   "content_digest": event_record.content_digest}
-        return StateBatch({key: run, "event-intent/" + event_id: intent,
+        return StateBatch({key: run, EVENT_INTENT_PREFIX + event_id: intent,
                            **{"operation/" + oid: record for oid, record in (operations or {}).items()}},
                           deletes=deletes)
 
