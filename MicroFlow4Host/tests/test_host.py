@@ -276,3 +276,19 @@ class StaticAndScaffoldTests(HostTestBase):
         printed = json.loads(out.getvalue())
         self.assertTrue(printed["password"])
         self.assertEqual(bootstrap(store, "owner", None), 2)  # 幂等拒绝重建
+
+    def test_bootstrap_admin_role_holds_the_whole_catalog(self):
+        # 权限单一来源：管理员角色必须持全目录（曾有 9 项漏挂的漂移史，此处钉死）。
+        import io
+        from contextlib import redirect_stdout
+        store = self.root / "boot2.sqlite3"
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(bootstrap(store, "owner2", "pw"), 0)
+        from host.database import HostDatabase
+        db = HostDatabase(store)
+        role = db.query_one("SELECT permissions FROM roles WHERE name = 'admin'")
+        self.assertEqual(json.loads(role["permissions"]),
+                         sorted({entry["permission"] for entry in PERMISSION_CATALOG}))
+        self.assertIn("registry:write", role["permissions"])
+        db.close()

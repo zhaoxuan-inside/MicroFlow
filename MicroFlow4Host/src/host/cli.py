@@ -10,14 +10,12 @@ import sys
 from pathlib import Path
 
 from .database import HostDatabase
+from .scenarios import PERMISSION_CATALOG
 from .security import hash_password
 
-_ADMIN_ROLE_PERMISSIONS = [
-    "platform:tenant_manage", "platform:user_manage", "platform:role_manage", "platform:audit_read",
-    "tenant:member_manage", "tenant:project_create", "tenant:role_manage",
-    "project:manage", "project:member_manage",
-    "page:ops_console", "page:bizops_console",
-]
+# 管理员角色持全目录权限——单一来源（与契约测试的装配同构）；
+# 手工列举曾漏掉 registry:write 等 9 项，属于典型的第二真相漂移。
+_ADMIN_ROLE_PERMISSIONS = sorted({entry["permission"] for entry in PERMISSION_CATALOG})
 
 _SCAFFOLD_APP = '''"""宿主应用骨架 —— 由 `microflow-host scaffold` 生成（microflow-host 参考实现）。
 
@@ -104,6 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     scaffold_cmd.add_argument("--into", required=True, type=Path)
     serve = commands.add_parser("serve", help="Run the gateway (uvicorn)")
     serve.add_argument("--store", required=True, type=Path)
+    serve.add_argument("--host", default="127.0.0.1",
+                       help="bind address (containers pass 0.0.0.0)")
     serve.add_argument("--port", type=int, default=3000)
     serve.add_argument("--apps-dir", type=Path, default=None)
 
@@ -117,7 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         from .app import create_app
         from .database import HostDatabase as DB
 
-        uvicorn.run(create_app(DB(args.store), apps_dir=args.apps_dir), port=args.port, log_level="warning")
+        uvicorn.run(create_app(DB(args.store), apps_dir=args.apps_dir),
+                    host=args.host, port=args.port, log_level="warning")
         return 0
     return 2
 

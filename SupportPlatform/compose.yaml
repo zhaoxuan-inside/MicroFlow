@@ -1,0 +1,147 @@
+# MicroFlow 一键开发栈：整套框架 + 基础设施，一条命令起。
+#
+#   cd SupportPlatform
+#   docker compose up -d --build                # PG + 编排控制面 + 宿主网关
+#   docker compose --profile spas up -d         # （可选）三个平台 SPA 壳，需先构建 dist
+#
+# 起来之后：
+#   宿主网关     http://127.0.0.1:3000   （dispatch / telemetry / registry.*）
+#   编排控制面   http://127.0.0.1:8200   （admin@orch.local / orch-dev-admin）
+#   宿主管理员   dev-admin / dev-password（registry:write 等全目录权限）
+#   SPA 壳       4601/4602/4603（dist 未构建则不要开 spas profile）
+#
+# 收拾现场：docker compose down -v
+#
+# 诚实边界：这是开发栈（协议验证介质），不是生产部署清单——限流/备份/PG 介质
+# Provider/自身可观测等生产底线见 BLUEPRINT §六（R5），不在本文件范围内。
+
+name: microflow-suite
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: orch
+      POSTGRES_PASSWORD: orch-dev
+      POSTGRES_DB: orch_control
+    volumes:
+      - orch-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orch -d orch_control"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  orch-control:
+    build:
+      context: "../MicroFlow4Orchestration/server"
+    environment:
+      ORCH_DATABASE_URL: postgres://orch:orch-dev@postgres:5432/orch_control
+      ORCH_ADMIN_EMAIL: admin@orch.local
+      ORCH_ADMIN_PASSWORD: orch-dev-admin
+      ORCH_SERVICE_TOKEN: orch-dev-service-token
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8200"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8200/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  host-bootstrap:
+    build:
+      context: "../MicroFlow4Host"
+    environment:
+      MF_HOST_STORE: /data/host.sqlite3
+      MF_DEV_ADMIN: dev-admin
+      MF_DEV_PASSWORD: dev-password
+    volumes:
+      - host-data:/data
+      - ./deploy/host-bootstrap.sh:/deploy/host-bootstrap.sh:ro
+    command: ["/bin/sh", "/deploy/host-bootstrap.sh"]
+    restart: "no"
+
+  host:
+    build:
+      context: "../MicroFlow4Host"
+    environment:
+      MF_HOST_STORE: /data/host.sqlite3
+    volumes:
+      - host-data:/data
+    command: ["microflow-host", "serve", "--store", "/data/host.sqlite3",
+              "--host", "0.0.0.0", "--port", "3000", "--apps-dir", "/data/apps"]
+    depends_on:
+      host-bootstrap:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:3000/api/v1/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # ---- SPA 部署壳（可选 profile：先构建 dist 再启用） ------------------
+  # 各 SPA：npm install --no-bin-links && node node_modules/vite/bin/vite.js build
+
+  shell-orchestration:
+    build:
+      context: ".."
+    profiles: ["spas"]
+    environment:
+      SUPPORT_APP: orchestration
+      SUPPORT_PORT: "4601"
+      SUPPORT_DIST: /srv/dist
+      OPCHUB_BACKEND_URL: http://host:3000
+      ORCH_CONTROL_URL: http://orch-control:8200
+      SUPPORT_ORCH_PROXY: "1"
+    volumes:
+      - "../MicroFlow4Orchestration/dist:/srv/dist:ro"
+    ports:
+      - "4601:4601"
+    depends_on: [host, orch-control]
+
+  shell-ops:
+    build:
+      context: ".."
+    profiles: ["spas"]
+    environment:
+      SUPPORT_APP: ops
+      SUPPORT_PORT: "4602"
+      SUPPORT_DIST: /srv/dist
+      OPCHUB_BACKEND_URL: http://host:3000
+      ORCH_CONTROL_URL: http://orch-control:8200
+      SUPPORT_ORCH_PROXY: "1"
+    volumes:
+      - "../MicroFlow4Ops/dist:/srv/dist:ro"
+    ports:
+      - "4602:4602"
+    depends_on: [host, orch-control]
+
+  shell-bizops:
+    build:
+      context: ".."
+    profiles: ["spas"]
+    environment:
+      SUPPORT_APP: bizops
+      SUPPORT_PORT: "4603"
+      SUPPORT_DIST: /srv/dist
+      OPCHUB_BACKEND_URL: http://host:3000
+      SUPPORT_ORCH_PROXY: "0"
+    volumes:
+      - "../MicroFlow4Bizops/dist:/srv/dist:ro"
+    ports:
+      - "4603:4603"
+    depends_on: [host]
+
+volumes:
+  orch-pg:
+  host-data:

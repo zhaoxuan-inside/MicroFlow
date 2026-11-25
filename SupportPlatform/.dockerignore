@@ -1,0 +1,7 @@
+__pycache__/
+tests/
+deploy/
+compose.yaml
+README.md
+Dockerfile
+.dockerignore
