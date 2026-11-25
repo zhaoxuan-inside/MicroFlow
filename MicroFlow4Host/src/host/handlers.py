@@ -265,6 +265,8 @@ def bizops_overview(db: HostDatabase, user, payload: dict, context: dict) -> dic
         "users": db.query_one("SELECT COUNT(*) AS n FROM users")["n"],
         "runs": db.query_one("SELECT COUNT(*) AS n FROM runs")["n"],
         "telemetry_events": db.query_one("SELECT COUNT(*) AS n FROM telemetry")["n"],
+        "registry_events": db.query_one("SELECT COUNT(*) AS n FROM registry_events")["n"],
+        "registry_snapshots": db.query_one("SELECT COUNT(*) AS n FROM registry_snapshots")["n"],
     }
     return {"entities": counts, "note": "实体计数 + 真实记录计数；样本量即全量，无抽样美化"}
 
@@ -278,8 +280,13 @@ def bizops_trend(db: HostDatabase, user, payload: dict, context: dict) -> dict:
     runs = db.query(
         "SELECT substr(at, 1, 10) AS day, COUNT(*) AS n FROM runs GROUP BY day ORDER BY day DESC LIMIT ?",
         (days,))
+    events = db.query(
+        "SELECT substr(received_at, 1, 10) AS day, COUNT(*) AS n FROM registry_events"
+        " GROUP BY day ORDER BY day DESC LIMIT ?",
+        (days,))
     return {"telemetry_by_day": [_row_dict(r) for r in rows],
-            "runs_by_day": [_row_dict(r) for r in runs]}
+            "runs_by_day": [_row_dict(r) for r in runs],
+            "events_by_day": [_row_dict(r) for r in events]}
 
 
 def bizops_funnel(db: HostDatabase, user, payload: dict, context: dict) -> dict:
