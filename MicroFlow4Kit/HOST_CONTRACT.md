@@ -35,6 +35,10 @@
 代理消费，权限点 `ops:alerts`）。T12 对齐：下发哈希为 SHA-256 规范化 JSON（`config_hash`），并携带
 `flow_digest`（宿主装有 microflow 时经 `microflow.platform_graph` 转换的平台图 → flow 骨架摘要）。
 
+`registry.stream` / `registry.publish`（注册面，见 `MicroFlow4Registry`）；**字段级契约**：
+`host-contract.fields.json`（`microflow-host-fields-v1`）——参考宿主实现场景的 payload/data 字段单一来源，
+宿主守卫测试与 Kit 调用场景守卫双向咬合，unknown 场景即红灯。
+
 ## 路线衔接
 
 漏斗时序归因与运行时多环境拓扑随框架 T14 控制面 / T15 运行分析落地；Flutter 侧遥测查询协议见 §30.2。

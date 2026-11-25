@@ -1,0 +1,123 @@
+{
+  "protocol": "microflow-host-fields-v1",
+  "version": 1,
+  "note": "参考宿主（MicroFlow4Host）dispatch 场景的字段级契约，单一来源：宿主守卫测试（场景集双向咬合 + data 键形状精确断言）与 Kit 守卫测试（SPA 调用场景分类）都以本文件为准。只声明顶层字段；嵌套行结构与运行时强校验属后续切片。",
+  "types": ["string", "int", "number", "bool", "object", "array"],
+  "delegatedPrefixes": ["orchestration.", "experiment.", "configcenter."],
+  "externalScenarios": {
+    "auth.public-key": "Kit passwordCrypto 取登录公钥；真实宿主场景，参考宿主未实现（SPA 在途迁移）",
+    "auth.logout": "契约声明登出为客户端清 token；SPA 仍调用以兼容真实宿主",
+    "ops.runs.metrics": "Ops 指标页调用名；参考宿主实现为 ops.metrics（口径待统一）",
+    "bizops.actions": "Bizops 漏斗页候选动作列表；参考宿主未实现",
+    "platform.tenants.members.list": "Kit admin 租户成员页；参考宿主未实现",
+    "platform.projects.members.list": "Kit admin 项目成员页；参考宿主未实现"
+  },
+  "scenarios": {
+    "auth.login": {
+      "payload": {"username": "string", "password": "string"},
+      "data": {"token": "string", "expires_at": "string", "user": "object"}
+    },
+    "auth.session": {
+      "payload": {},
+      "data": {"user": "object"}
+    },
+    "platform.scope.my": {
+      "payload": {},
+      "data": {"user": "object", "tenants": "array", "projects": "array", "envs": "array"}
+    },
+    "platform.tenants.list": {
+      "payload": {},
+      "data": {"tenants": "array"}
+    },
+    "platform.tenants.create": {
+      "payload": {"name": "string", "owner_role_id": "int?"},
+      "data": {"tenant": "object"}
+    },
+    "platform.projects.list": {
+      "payload": {"tenant_id": "int?"},
+      "data": {"projects": "array"}
+    },
+    "platform.projects.create": {
+      "payload": {"tenant_id": "int", "name": "string", "role_id": "int?", "envs": "array?"},
+      "data": {"project": "object"}
+    },
+    "platform.projects.update": {
+      "payload": {"project_id": "int", "name": "string"},
+      "data": {"project": "object"}
+    },
+    "platform.users.list": {
+      "payload": {},
+      "data": {"users": "array"}
+    },
+    "platform.users.create": {
+      "payload": {"username": "string", "password": "string"},
+      "data": {"user": "object"}
+    },
+    "platform.roles.list": {
+      "payload": {},
+      "data": {"roles": "array"},
+      "notes": "SPA 传 scope 过滤；参考宿主忽略该键（字段级对齐属后续切片）"
+    },
+    "platform.roles.create": {
+      "payload": {"name": "string", "permissions": "array"},
+      "data": {"role": "object"}
+    },
+    "platform.permissions.list": {
+      "payload": {},
+      "data": {"permissions": "array"}
+    },
+    "platform.envs.list": {
+      "payload": {"project_id": "int"},
+      "data": {"envs": "array"}
+    },
+    "platform.envs.create": {
+      "payload": {"project_id": "int", "key": "string"},
+      "data": {"env": "object"}
+    },
+    "platform.audit.list": {
+      "payload": {"limit": "int?", "offset": "int?"},
+      "data": {"audit": "array", "limit": "int", "offset": "int"},
+      "notes": "Ops 审计页传 action/result；参考宿主忽略这两个键（过滤属后续切片）"
+    },
+    "ops.runs.list": {
+      "payload": {"scenario": "string?", "status": "string?", "env_key": "string?", "limit": "int?", "offset": "int?"},
+      "data": {"runs": "array", "total": "int", "limit": "int", "offset": "int"}
+    },
+    "ops.runs.detail": {
+      "payload": {"seq": "int"},
+      "data": {"run": "object"}
+    },
+    "ops.metrics": {
+      "payload": {},
+      "data": {"total": "int", "succeeded": "int", "success_rate": "number", "p95_ms": "int", "method": "string"}
+    },
+    "ops.events.list": {
+      "payload": {"namespace": "string?", "group": "string?", "aggregate_key": "string?", "limit": "int?", "offset": "int?"},
+      "data": {"events": "array", "total": "int", "limit": "int", "offset": "int", "note": "string"}
+    },
+    "bizops.overview": {
+      "payload": {},
+      "data": {"entities": "object", "note": "string"}
+    },
+    "bizops.trend": {
+      "payload": {"days": "int?"},
+      "data": {"telemetry_by_day": "array", "runs_by_day": "array", "events_by_day": "array"}
+    },
+    "bizops.funnel": {
+      "payload": {"steps": "array"},
+      "data": {"steps": "array", "sample_clients": "int", "note": "string"}
+    },
+    "bizops.retention": {
+      "payload": {"days": "int?"},
+      "data": {"cohorts": "object", "note": "string"}
+    },
+    "registry.publish": {
+      "payload": {"namespace": "string", "group": "string", "digest": "string", "contentDigest": "string?", "report": "object"},
+      "data": {"status": "string", "namespace": "string", "group": "string", "digest": "string", "contentDigest": "string", "assets": "int"}
+    },
+    "registry.stream": {
+      "payload": {"namespace": "string", "group": "string", "contentDigest": "string?", "count": "int", "batch": "object"},
+      "data": {"status": "string", "accepted": "int", "duplicates": "int", "count": "int"}
+    }
+  }
+}

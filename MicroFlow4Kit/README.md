@@ -8,6 +8,8 @@
 | `packages/api` | 宿主契约客户端：统一分发 + envelope 解析 + 活动 scope 存储（租户/项目/环境）+ `host.ts` 宿主配置单点 |
 | `packages/admin` | 平台治理共享页：租户/项目/成员/角色与权限/用户管理（三平台共挂 `/platform/*`） |
 
+**字段级契约**：`host-contract.fields.json`（`microflow-host-fields-v1`）是参考宿主 dispatch 场景的 payload/data 字段单一来源；`tests/contract.test.mjs` 守卫三个 SPA + admin 的每个调用场景必须可分类（contract / delegated / external 登记缺口 / unknown 即失败）。宿主侧形状由 `MicroFlow4Host/tests/test_contract_shape.py` 精确断言。
+
 ## 宿主契约
 
 支撑平台与具体业务无关：一切后端能力经宿主契约获得（见 `HOST_CONTRACT.md`）。宿主可变点集中在 `packages/api/src/host.ts`，构建期以 `VITE_CONSOLE_*` 覆盖（endpoint / 存储键 / 品牌名 / 事件命名空间）。
