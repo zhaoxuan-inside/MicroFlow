@@ -14,3 +14,46 @@ export function waterfallPct(durationMs: number | null | undefined, maxDuration:
   // 上限夹紧只影响异常入参，不改变正常相对关系。
   return Math.min(100, Math.max(3, ((durationMs || 0) / safeMax) * 100));
 }
+
+/** 事件帧（ops.events.list 行）：payload 里携带节点级事实（node_id/status/duration_ms）。 */
+export interface EventFrameLike {
+  seq: number;
+  event_id: string;
+  aggregate_key: string;
+  sequence: number;
+  kind: string;
+  payload?: Record<string, unknown> | null;
+}
+
+/** 帧瀑布行：payload → 节点轨迹；缺字段时如实降级（UNKNOWN/0），不猜。 */
+export interface FrameTrace {
+  node_id: string;
+  status: string;
+  duration_ms: number;
+  payload: Record<string, unknown>;
+}
+
+export function groupFramesByAggregate(frames: EventFrameLike[] | null | undefined) {
+  const groups = new Map<string, EventFrameLike[]>();
+  for (const frame of frames || []) {
+    const bucket = groups.get(frame.aggregate_key);
+    if (bucket) bucket.push(frame);
+    else groups.set(frame.aggregate_key, [frame]);
+  }
+  return [...groups.entries()].map(([aggregateKey, bucket]) => ({
+    aggregateKey,
+    frames: [...bucket].sort((a, b) => a.sequence - b.sequence),
+  }));
+}
+
+export function frameToTrace(frame: EventFrameLike): FrameTrace {
+  const payload = frame.payload || {};
+  const node = payload.node_id ?? payload.event_type ?? `${frame.aggregate_key}#${frame.sequence}`;
+  const status = payload.status ?? payload.resolution ?? "UNKNOWN";
+  return {
+    node_id: String(node),
+    status: String(status),
+    duration_ms: Number(payload.duration_ms) || 0,
+    payload,
+  };
+}
