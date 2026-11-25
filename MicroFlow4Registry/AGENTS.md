@@ -54,4 +54,4 @@ PYTHONPATH=../MicroFlow4Python/src python3 -m microflow_registry export <project
   --namespace demo --group dev --ephemeral | python3 -m json.tool
 ```
 
-验收标准见 `README.md` §四（A1–A24），每条必须有对应测试；测试绿了才算完成。
+验收标准见 `README.md` §四（A1–A27），每条必须有对应测试；测试绿了才算完成。

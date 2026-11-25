@@ -10,21 +10,30 @@ Failure is counted, never raised into business code. Overflow is counted
 (``dropped``), never silently absorbed — an evicted record is lost on purpose
 and the counter is the only honest evidence of it.
 """
+import math
 import threading
 from collections import deque
+from datetime import datetime, timezone
 
 from .errors import RegistryError
 from .push import DEFAULT_TIMEOUT_SECONDS, send_batch
-from .stream import MAX_FRAMES, KIND_RECORD, build_batch, build_frame, check_aggregate
+from .stream import MAX_FRAMES, KIND_INTENT, KIND_RECORD, build_batch, build_frame, check_aggregate
 from .store import Store
 
 UNATTRIBUTED = "unattributed"
 _AGGREGATE_FIELDS = ("executionId", "execution_id", "traceId", "trace_id")
 
 
+def _iso_timestamp(value) -> str | None:
+    """Epoch 秒 → ISO8601（确定性投影）；非有限数值返回 None，不伪造时间。"""
+    if type(value) in (int, float) and math.isfinite(value) and value >= 0:
+        return datetime.fromtimestamp(value, timezone.utc).isoformat(timespec="seconds")
+    return None
+
+
 class RecordStream:
     def __init__(self, *, namespace: str, group: str, config, store=None, capacity: int = 1000,
-                 flush_size: int = 100, flush_interval: float = 5.0, kind: str = KIND_RECORD,
+                 flush_size: int = 100, flush_interval: float = 5.0,
                  timeout: float = DEFAULT_TIMEOUT_SECONDS, retries: int = 0):
         if capacity < 1 or flush_size < 1 or flush_size > capacity:
             raise RegistryError("STREAM_INVALID",
@@ -38,7 +47,7 @@ class RecordStream:
         self._config = config
         self._store = store or Store()
         self._capacity, self._flush_size = capacity, flush_size
-        self._flush_interval, self._kind = flush_interval, kind
+        self._flush_interval = flush_interval
         self._timeout, self._retries = timeout, retries
         self._queue = deque()
         self._sequence = {}
@@ -75,9 +84,50 @@ class RecordStream:
                     return False
                 sequence = self._sequence.get(aggregate, 0) + 1
                 self._sequence[aggregate] = sequence
-                self._queue.append((aggregate, sequence, record))
+                self._queue.append({"aggregateKey": aggregate, "sequence": sequence,
+                                    "payload": record, "kind": KIND_RECORD,
+                                    "eventId": None, "occurredAt": None})
             self.accepted += 1
             return True
+        except Exception:  # noqa: BLE001 - a sink must never break the caller
+            self.invalid += 1
+            return False
+
+    def accept_intent(self, intent) -> bool:
+        """框架 EventIntent（microflow-event-v1）：身份原样保留，不重派序号。
+
+        宿主与加载侧对 event_intent 帧信任给定 eventId；因此这里必须先验明
+        身份三要素（eventId/aggregate/sequence），缺一即计数拒绝，不入队。
+        """
+        try:
+            event_id = intent.get("event_id") or intent.get("eventId")
+            aggregate = intent.get("aggregate_key") or intent.get("aggregateKey")
+            sequence = intent.get("sequence")
+            if not isinstance(event_id, str) or not event_id:
+                self.invalid += 1
+                return False
+            check_aggregate(aggregate)
+            if type(sequence) is not int or sequence < 1:
+                self.invalid += 1
+                return False
+            payload = {"event_type": intent.get("event_type") or intent.get("eventType") or "",
+                       "schema_version": intent.get("schema_version") or "",
+                       "payload": intent.get("payload")}
+            occurred = intent.get("occurredAt")
+            if not isinstance(occurred, str) or not occurred:
+                occurred = _iso_timestamp(intent.get("occurred_at"))
+            with self._lock:
+                if len(self._queue) >= self._capacity:
+                    self.dropped += 1
+                    return False
+                self._queue.append({"aggregateKey": aggregate, "sequence": sequence,
+                                    "payload": payload, "kind": KIND_INTENT,
+                                    "eventId": event_id, "occurredAt": occurred})
+            self.accepted += 1
+            return True
+        except RegistryError:
+            self.invalid += 1
+            return False
         except Exception:  # noqa: BLE001 - a sink must never break the caller
             self.invalid += 1
             return False
@@ -107,12 +157,13 @@ class RecordStream:
 
     def _project(self, chunk) -> tuple[list, int]:
         frames, rejected = [], 0
-        for aggregate, sequence, record in chunk:
+        for item in chunk:
             try:
-                frames.append(build_frame(record, aggregate_key=aggregate, sequence=sequence,
-                                          kind=self._kind))
+                frames.append(build_frame(item["payload"], aggregate_key=item["aggregateKey"],
+                                          sequence=item["sequence"], kind=item["kind"],
+                                          occurred_at=item["occurredAt"], event_id=item["eventId"]))
             except (TypeError, ValueError):
-                rejected += 1                    # NaN or non-JSON payloads never poison a batch
+                rejected += 1            # NaN or non-JSON payloads never poison a batch
         return frames, rejected
 
     def _drain_outbox(self) -> int:

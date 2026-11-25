@@ -164,6 +164,11 @@ stream.start()                                          # 后台冲刷线程
 stream.close()                                          # 停线程 + 最后一次冲刷
 ```
 
+`RecordStream.accept_intent(intent)` 供宿主接框架 `EventIntent`（`microflow-event-v1`）：
+**身份原样保留**（`event_id` 不重算、`sequence` 不重派、`occurred_at` epoch 秒转 ISO），
+帧 `kind: "event_intent"`，宿主与加载侧信任给定身份。缺身份三要素（eventId/aggregate/sequence）
+只计数拒绝，不入队。
+
 `accept` 只做“分配序号 + 入有界队列”，不做任何 IO；队列满则**计数丢弃**（`dropped`），
 不阻塞、不抛错。落盘/上传/重试全在后台线程，失败只记账（`failed_flushes`）。
 
@@ -196,8 +201,10 @@ stream.close()                                          # 停线程 + 最后一�
 | A23 | 冲刷按 `flush_size` 分块，顺序不变 | `test_flush_sends_chunks_of_flush_size` |
 | A24 | 冲刷失败保 outbox、计数；非法载荷被计数而非毒化整批 | `test_failure_keeps_outbox_and_replay_drains_it` / `test_invalid_payload_is_counted_not_raised` |
 | A25 | `status` 也列出只有事件流的组（无报告时如实显示 assets=0） | `test_status_lists_stream_only_groups` |
+| A26 | `accept_intent` 身份原样保留：eventId 不重算、sequence 不重派、epoch→ISO | `test_accept_intent_preserves_identity_verbatim` |
+| A27 | 意图缺身份三要素只计数拒绝，不入队不抛错 | `test_intent_without_identity_is_counted_not_queued` |
 
-运行：`cd MicroFlow4Registry && PYTHONPATH=../MicroFlow4Python/src python3 -m unittest discover -s tests -t .`（44 项）
+运行：`cd MicroFlow4Registry && PYTHONPATH=../MicroFlow4Python/src python3 -m unittest discover -s tests -t .`（47 项）
 
 ## 五、边界声明
 

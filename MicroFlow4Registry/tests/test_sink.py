@@ -113,6 +113,50 @@ class SinkTests(unittest.TestCase):
         self.assertTrue(server.requests)
         self.assertGreaterEqual(stream.stats()["pushed"], 1)
 
+    # A26
+    def test_accept_intent_preserves_identity_verbatim(self):
+        with dispatch_stub() as server:
+            stream = self.stream(server.endpoint, flush_size=5)
+            accepted = stream.accept_intent({
+                "event_id": "evt-001", "event_type": "order.placed",
+                "schema_version": "1", "aggregate_key": "order-42", "sequence": 5,
+                "payload": {"amount": 9900}, "occurred_at": 1700000000.0})
+            self.assertTrue(accepted)
+            self.assertEqual(stream.flush(), 1)
+            frame = self.payloads(server)[0]["batch"]["frames"][0]
+        self.assertEqual(frame["kind"], "event_intent")
+        self.assertEqual(frame["eventId"], "evt-001")          # 身份原样保留，不重算
+        self.assertEqual(frame["aggregateKey"], "order-42")
+        self.assertEqual(frame["sequence"], 5)                 # 序号沿用意图，不重派
+        self.assertEqual(frame["occurredAt"], "2023-11-14T22:13:20+00:00")
+        self.assertEqual(frame["payload"]["event_type"], "order.placed")
+        self.assertEqual(frame["payload"]["payload"], {"amount": 9900})
+
+    # A27
+    def test_intent_without_identity_is_counted_not_queued(self):
+        stream = self.stream("http://127.0.0.1:9/x", flush_size=5)
+        for intent in ({"aggregate_key": "a", "sequence": 1},                       # 无 event_id
+                       {"event_id": "x", "aggregate_key": "bad/key", "sequence": 1},  # 聚合键非法
+                       {"event_id": "y", "aggregate_key": "a", "sequence": 0}):      # 序号非法
+            self.assertFalse(stream.accept_intent(intent))
+        stats = stream.stats()
+        self.assertEqual(stats["invalid"], 3)
+        self.assertEqual(stats["accepted"], 0)
+        self.assertEqual(stats["queued"], 0)
+
+    def test_intent_and_record_frames_share_one_batch(self):
+        with dispatch_stub() as server:
+            stream = self.stream(server.endpoint, flush_size=5)
+            stream.accept({"executionId": "exec-1", "node_id": "calc", "duration_ms": 12})
+            stream.accept_intent({"event_id": "evt-9", "event_type": "order.placed",
+                                  "schema_version": "1", "aggregate_key": "order-9",
+                                  "sequence": 1, "payload": {}})
+            self.assertEqual(stream.flush(), 2)
+            frames = self.payloads(server)[0]["batch"]["frames"]
+        self.assertEqual([frame["kind"] for frame in frames],
+                         ["runtime_record", "event_intent"])
+        self.assertEqual([frame["aggregateKey"] for frame in frames], ["exec-1", "order-9"])
+
 
 if __name__ == "__main__":
     unittest.main()
