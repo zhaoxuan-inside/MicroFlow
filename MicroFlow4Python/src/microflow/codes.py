@@ -93,6 +93,7 @@ _SUMMARIES = {
     "EVENT_LIMIT": "Event exceeds its budget",
     "UNKNOWN_EVENT": "Event intent does not exist",
     "EVENT_ID_CONFLICT": "Event id or acknowledgement digest does not match the recorded intent",
+    "INVALID_TRACE_REF": "External trace reference must be a bounded string or null",
     "INVALID_QUERY": "Query bounds or cursor are invalid",
     # 注册
     "REGISTRY_SEALED": "Registry is sealed after compilation",

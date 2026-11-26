@@ -191,6 +191,33 @@ class SchedulingTests(unittest.TestCase):
             request_id=digest({"ack": intent["event_id"], "attempt": 2}))["status"],
             "already-delivered")
 
+    def test_trace_ref_dual_records_the_external_reference_honestly(self):
+        # 追踪传播对偶（前端基线 11 的后端面）：有则入账、无则 None、非法显式拒绝；
+        # 引用进运行记录、进每条意图载荷（随投递泵流到宿主）、不参与执行身份。
+        commands, _ = self.make()
+        execution = self.accept(commands)
+        accepted = commands.accept('example', {'n': 1}, request_id='accept-traced',
+                                  trace_ref='dispatch-6f1c-42')
+        traced = accepted['execution_id']
+        self.assertNotEqual(traced, execution)          # 新执行（request_id 不同）
+        run = commands.query(traced)
+        self.assertEqual(run['trace_ref'], 'dispatch-6f1c-42')
+        intents = [record for record in commands.coordinator.pending_events()
+                   if record['execution_id'] == traced]
+        self.assertTrue(intents)
+        self.assertTrue(all(record['payload']['trace_ref'] == 'dispatch-6f1c-42'
+                            for record in intents))
+
+        bare = self.accept(commands, request='accept-bare')
+        self.assertIsNone(commands.query(bare)['trace_ref'])
+        intents = [record for record in commands.coordinator.pending_events()
+                   if record['execution_id'] == bare]
+        self.assertTrue(all(record['payload']['trace_ref'] is None for record in intents))
+
+        with self.assertRaisesRegex(ContractError, 'INVALID_TRACE_REF'):
+            commands.accept('example', {'n': 1}, request_id='accept-bad-trace',
+                            trace_ref=42)
+
     def test_admission_is_distinct_from_completion_and_replays_original(self):
         commands, store = self.make()
         accepted = commands.accept('example', {'n': 1}, request_id='accept')

@@ -138,7 +138,8 @@ class ExecutionCommands:
         sequence = run.get("event_sequence", 0) + 1
         run["event_sequence"] = sequence
         event_record = EventIntent(event_id, "microflow.execution", "1", run["execution_id"], sequence,
-                                    {"event": event, "status": run["status"]}, run["execution_id"],
+                                    {"event": event, "status": run["status"],
+                                     "trace_ref": run.get("trace_ref")}, run["execution_id"],
                                     run["release_id"], run["observed_at"], run["observed_at"])
         intent = {**event_record.value(), "execution_id": run["execution_id"], "event": event,
                   "owner": asdict(self.coordinator.owner), "release_id": run["release_id"],
@@ -160,8 +161,14 @@ class ExecutionCommands:
         return self.coordinator.transact(checked, request_id, request_digest=digest(command),
                                          expected_revision=expected_revision)
 
-    def accept(self, flow_id, data, *, request_id, expected_revision=None):
+    def accept(self, flow_id, data, *, request_id, expected_revision=None, trace_ref=None):
         _id(request_id, "request_id")
+        # 追踪传播对偶（前端基线 11 的后端面）：外部运行引用如实入账——
+        # 有则记录，无则 None，绝不伪造；引用不参与执行身份（execution_id 不变）。
+        if trace_ref is not None and (type(trace_ref) is not str or not trace_ref
+                                      or len(trace_ref) > 128):
+            raise ContractError("INVALID_TRACE_REF",
+                                "trace_ref must be a bounded nonempty string or null")
         plan = self._preflight(flow_id)
         validate_value(data)
         data = freeze(data)
@@ -175,12 +182,13 @@ class ExecutionCommands:
             if active >= self.max_active:
                 raise ContractError("EXECUTION_BACKPRESSURE", "Active execution budget exhausted")
             options = {"scene": flow_id, "version": flow_id, **thaw(plan.definition.get("options", {})), "releaseId": self.release.release_id,
-                       "flowInstanceId": execution_id, "traceId": execution_id}
+                       "flowInstanceId": execution_id, "traceId": execution_id, "traceRef": trace_ref}
             now = self.clock_time()
             deadline = min((seconds(p["timeout"]["deadline"]) for p in plan.policies.values()), default=300)
             run = {"protocol": STATE_PROTOCOL, "execution_id": execution_id,
                    "flow_id": flow_id, "release_id": self.release.release_id, "binding": asdict(self.binding),
                    "protocol_test": self.protocol_test, "input": thaw(data), "options": options,
+                   "trace_ref": trace_ref,
                    "status": "ACCEPTED", "stop": None, "output": None,
                    "accepted_at": now, "observed_at": now, "deadline_at": now + deadline,
                    "policies": {n: {"values": thaw(p.values), "digest": p.policy_digest,
@@ -199,7 +207,8 @@ class ExecutionCommands:
             self._advance(run, now)
             result = {**self._summary(run), "status": "ACCEPTED", "execution_status": run["status"]}
             return self._batch(key, run, request_id, "execution_accepted"), result
-        return self._transact("accept", {"flow_id": flow_id, "input": data}, decide, request_id, expected_revision)
+        return self._transact("accept", {"flow_id": flow_id, "input": data, "trace_ref": trace_ref},
+                              decide, request_id, expected_revision)
 
     def query(self, execution_id):
         _id(execution_id, "execution_id")

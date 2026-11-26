@@ -174,7 +174,7 @@ class ScheduledRuntime:
                 self._pump_task = asyncio.create_task(self._pump())
         return state
 
-    async def submit(self, flow_id, data, *, request_id):
+    async def submit(self, flow_id, data, *, request_id, trace_ref=None):
         self._bind()
         if self._closing:
             raise ContractError("RUNTIME_CLOSED", 'Runtime no longer accepts work')
@@ -183,7 +183,8 @@ class ScheduledRuntime:
         validate_value(data)
         data = freeze(data)
         async def admitting():
-            accepted = await self._command(self.commands.accept, flow_id, data, request_id=request_id)
+            accepted = await self._command(self.commands.accept, flow_id, data,
+                                           request_id=request_id, trace_ref=trace_ref)
             await self._watch(accepted['execution_id'])
             return freeze(accepted)
         admission = asyncio.create_task(admitting())
@@ -233,9 +234,9 @@ class ScheduledRuntime:
                 elif not task.cancelled():
                     task.exception()  # Consume a failure if all waiters disconnected.
 
-    async def run(self, flow_id, data, *, request_id, timeout=None):
+    async def run(self, flow_id, data, *, request_id, timeout=None, trace_ref=None):
         self._validate_timeout(timeout)
-        accepted = await self.submit(flow_id, data, request_id=request_id)
+        accepted = await self.submit(flow_id, data, request_id=request_id, trace_ref=trace_ref)
         return await self.wait(accepted['execution_id'], timeout=timeout)
 
     @staticmethod
