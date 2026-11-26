@@ -120,15 +120,25 @@ VibeCoding 工具接入：[MCP 桥] CLI 12 命令 → MCP 工具（框架外适�
 
 ### 5.4 实现状态（如实声明）
 
-- **MicroFlow4Python**（299 项测试）：T01 包入口 / T02 契约 SDK / T05 本地同步执行 / T03·T04 编译与策略主体——完成；T06 本地闭环；T07 原子状态、T08 调度执行——协议切片通过，并已接入项目内持久化子模块（默认 memory，内置 SQLite 单机耐久提供者，经同一提供者契约测试套件与跨进程 fencing/重启恢复验证）与**失联自动重派**（`recover`：被 fence 旧 owner 的纯/读 CLAIMED 节点由泵循环自动重派，写入型保留手动确认）；T09 幂等确认、T10 事件意图——协议切片通过（内存替身）；本地运行时另已实现 **operator 节点条件执行**与**受控 write 算子**；**T12 切片已落地**：`releases.publish`/`load_release` 内容寻址发布落库与按 release_id 装载（跨机器物化与介质迁移未开始）；**VibeCoding 接入切片已落地**：`context`（算子局部上下文）与 `scaffold`（算子/流程候选骨架生成）CLI 命令 + `platform_graph`（编排平台画布图 → flow 骨架转换，显式限制与诊断）；熔断语义分离：节点级 `UNHANDLED_OPERATOR_EXCEPTION`、运行级闩锁 `CIRCUIT_BROKEN`（已入诊断码目录）；**T11～T13、T14～T16（动态节点执行、缓存接入、运维控制、运行利用分析、最终验收）未开始**。CLI 13/17 已实现（test 命令 2026-11-21 落地：项目声明回归输入输出对与算子契约用例，预期强制来源声明）。
+- **MicroFlow4Python**（316 项测试）：T01 包入口 / T02 契约 SDK / T05 本地同步执行 / T03·T04 编译与策略主体——完成；T06 本地闭环；T07 原子状态、T08 调度执行——协议切片通过，并已接入项目内持久化子模块（默认 memory，内置 SQLite 单机耐久提供者，经同一提供者契约测试套件与跨进程 fencing/重启恢复验证）与**失联自动重派**（`recover`：被 fence 旧 owner 的纯/读 CLAIMED 节点由泵循环自动重派，写入型保留手动确认）；T09 幂等确认、T10 事件意图——协议切片通过（内存替身），**2026-11-26 补投递读面**：`coordinator.pending_events`/`acknowledge_event`（状态库为唯一投递账本，`request_id` 幂等翻账、换新请求再确认是已记录 no-op）+ **追踪传播对偶** `accept(..., trace_ref=)`（有则入账、无则 None、非法显式拒绝；进运行记录与每条意图载荷随泵流到宿主，不参与执行身份）；本地运行时另已实现 **operator 节点条件执行**与**受控 write 算子**；**T12 切片已落地**：`releases.publish`/`load_release` 内容寻址发布落库与按 release_id 装载（跨机器物化与介质迁移未开始）；**VibeCoding 接入切片已落地**：`context`（算子局部上下文）与 `scaffold`（算子/流程候选骨架生成）CLI 命令 + `platform_graph`（编排平台画布图 → flow 骨架转换，显式限制与诊断）；熔断语义分离：节点级 `UNHANDLED_OPERATOR_EXCEPTION`、运行级闩锁 `CIRCUIT_BROKEN`（已入诊断码目录）；**T11～T13、T14～T16（动态节点执行、缓存接入、运维控制、运行利用分析、最终验收）未开始**。CLI 13/17 已实现（test 命令 2026-11-21 落地：项目声明回归输入输出对与算子契约用例，预期强制来源声明）。
 - **MicroFlow4Flutter**（总包 64 项 + 各包测试）：Level 0（模型/契约/校验/i18n/Token/主题/布局静态面）与 Level 1（解释运行时/Tier A+B 渲染/覆盖链）**已实现**；Level 2 协议面部分实现（遥测/实验/Debug/Fact/Recovery/Ingest/Query 参考实现）；阶段六最小命令闭环已实现；基线覆盖 23/32（另 4 条部分）；**未实现**：编译模式产物、发布快照构建器与性能门禁、增量构建、运行期注入通道。
 - **支撑平台**（Orchestration/Ops/Bizops + Kit，2026-11 收口）：编排管理平台迁移到**自有控制面**（FastAPI `:8200` + PostgreSQL，独立账号/锁/E2E 阶段门禁/第二人审批/回滚指针 env_current）——实验域、配置中心（灰度）、告警最小闭环（规则求值挂接 debug I/O 上报与场景执行）由控制面承载；运维平台新增告警中心页；`config_hash` 为 SHA-256 内容寻址。哈希/审批/回滚语义见 `MicroFlow4Kit/HOST_CONTRACT.md`。集成测试需 PostgreSQL（缺失时显式跳过）。**字段级契约 v1 已立**（`MicroFlow4Kit/host-contract.fields.json`，`microflow-host-fields-v1`）：参考宿主 26 场景 payload/data 字段单一来源，宿主形状测试精确断言 + Kit 调用场景守卫四分类（contract/delegated/external 登记缺口/**unknown 即红灯**）；Ops 运行页字段对齐契约并新增事件瀑布（`ops.events.list`，按聚合键分组）；Bizops 总览/趋势聚合接入 registry 事件与快照计数。**一键开发栈**（`SupportPlatform/compose.yaml`）：`docker compose up -d --build` 即起 PG + 编排控制面 + 宿主网关（宿主管理员 dev-admin 全目录权限；`--profile spas` 加三个 SPA 壳）；注册链路已在容器化宿主上真 E2E 验证（推流 → 重推 event_id 去重 → 读面回读）。
 - **VibeCoding 工具接入**（`MicroFlow4MCP`）：CLI 全部 13 命令经零依赖 stdio MCP 服务器暴露为工具（capabilities/check/run/test/context/scaffold 等），协议适配在框架外，内核不感知 MCP。
 - **注册面**（`MicroFlow4Registry`，2026-11-23）：零依赖投影包，两个方向两种信封——**快照**（`export`/`push`，`microflow-registry-v1`，按 `contentDigest` 幂等）与**事件流**（`stream`，`microflow-registry-stream-v1`，逐帧内容派生 `eventId`，outbox 先落盘后发送、at-least-once、`--replay` 按序补发）；库侧 `RecordStream` 适配 `record_sink`（同步回调内零 IO、队列满计数丢弃、后台线程冲刷）；
 `accept_intent` 承接框架 `EventIntent`（`microflow-event-v1`）——**身份原样保留**（eventId 不重算、
-sequence 不重派、epoch 秒转 ISO），宿主侧信任 event_intent 身份。只读调用 CLI（`check` 门禁 →
-`operators`/`policy-schema` 投影），产出确定性报告。借鉴 Spring Boot 外部化配置/条件装配/失败隔离与 Nacos 三元寻址/元数据附着/客户端快照降级；**不做心跳与服务发现**，也**不引入 MQ**（传输留作 provider，等第二个物理消费者出现再换）。如实边界：生效策略暂不可上报（CLI 未暴露，不重算）；`release_id` 含绝对源码路径（跨机器变），可移植键用 `contentDigest`；`registry.publish`/`registry.stream` **服务端已由 MicroFlow4Host 兑现**（快照幂等、事件去重、宿主重算摘要、`ops.events.list` 读面，真实 HTTP 端到端联测通过）。47 项测试全绿。
+sequence 不重派、epoch 秒转 ISO），宿主侧信任 event_intent 身份；**`EventPump` 投递泵**（2026-11-26）：
+内核 `pending_events`/`acknowledge_event` 读面以回调注入（泵不 import microflow），保守 ack——整页
+接纳 + 冲刷干净才确认，任何疑点保持 PENDING 重投去重；传输边界 `_jsonsafe` 冻结结构转 plain JSON
+（修复 record 帧被静默计 invalid 丢弃、intent 帧在批摘要处炸两个真 bug）。只读调用 CLI（`check` 门禁 →
+`operators`/`policy-schema` 投影），产出确定性报告。借鉴 Spring Boot 外部化配置/条件装配/失败隔离与 Nacos 三元寻址/元数据附着/客户端快照降级；**不做心跳与服务发现**，也**不引入 MQ**（传输留作 provider，等第二个物理消费者出现再换）。如实边界：生效策略暂不可上报（CLI 未暴露，不重算）；`release_id` 含绝对源码路径（跨机器变），可移植键用 `contentDigest`；`registry.publish`/`registry.stream` **服务端已由 MicroFlow4Host 兑现**（快照幂等、事件去重、宿主重算摘要、`ops.events.list` 读面，真实 HTTP 端到端联测通过）。52 项测试全绿。
 - **全周期补全**（`MicroFlow4Spec` / `MicroFlow4Verify` / `MicroFlow4Delivery` / `MicroFlow4Host`，2026-11 落地，分析基线见根目录 [LIFECYCLE.md](LIFECYCLE.md)）：需求→验收基线结构化（spec.model.json + 追踪矩阵门禁）；UI 端到端验收执行器（声明式脚本在 4Web 真实运行时执行，`microflow-verify-v1` 信封；flutter 面与 DOM 截图断言属后续切片）；应用产物交付流水线（SHA-256 内容寻址仓库 + 环境链守卫 + 三证据门禁 + 第二人审批）；宿主参考实现（HOST_CONTRACT 的可运行起点：dispatch 网关、18 权限点 RBAC、遥测接收过载显式拒绝、ops/bizops 读时聚合、SPA 托管、scaffold，**+ registry.publish/registry.stream 服务端兑现**（快照按 `contentDigest` 幂等、事件按 `event_id` 去重、宿主侧重算摘要、`ops.events.list` 读面，与 4Registry 真实 HTTP 端到端联测通过）——编排/实验/配置中心场景由编排控制面承载，未接线时诚实 501；32 项契约测试）。
+- **业务容器适配器**（`MicroFlow4Container`，2026-11-26）：容器侧断链的第二次消除——接收控制面下发
+  （configs/debug/execute/operators 五通道，`config_hash` 重算校验、canvas 骨架真转换）、真耐久执行
+  （SQLite provider + durable 编译 + binding 覆盖）、上行自注册与 debug I/O 上报（inputs/outputs 如实
+  None）、**事件投递泵接线**（record_sink→RecordStream、pending_events→EventPump→acknowledge_event，
+  全链闭环测试：执行→意图→HTTP→宿主→翻账归零）；单算子试跑走 ephemeral 直通映射。7 项验收
+  （A33–A38）。同时内核补**追踪传播对偶**：`accept(..., trace_ref=)` 有则入账、无则 None、非法显式
+  拒绝——引用进运行记录、进每条意图载荷随泵流到宿主，不参与执行身份（前端基线 11 的后端面）。
 - 两侧共同边界：写入型算子与真实介质验证未开放；内存替身只验证协议。
 
 ## 六、语言实现与手册
@@ -147,6 +157,7 @@ sequence 不重派、epoch 秒转 ISO），宿主侧信任 event_intent 身份�
 | [MicroFlow4Verify](MicroFlow4Verify/README.md) | 端到端验收运行器：声明式脚本 × 真实渲染面 → `microflow-verify-v1` 证据信封 | AGENTS.md |
 | [MicroFlow4Delivery](MicroFlow4Delivery/README.md) | 交付流水线：应用产物内容寻址仓库 + 环境指针 + 三证据门禁 + 第二人审批 | AGENTS.md |
 | [MicroFlow4Host](MicroFlow4Host/README.md) | 宿主参考实现：dispatch 网关 + RBAC 目录 + 遥测接收 + 聚合 + SPA 托管 + scaffold | AGENTS.md |
+| [MicroFlow4Container](MicroFlow4Container/README.md) | **业务容器适配器参考实现**：控制面下发/执行/上报通道 + 耐久执行 + 事件投递泵接线 | AGENTS.md |
 
 各子项目根目录均有 `AGENTS.md`（VibeCoding 工具纪律速查）；仓库根 [AGENTS.md](AGENTS.md) 是工具开发的统一入口（纪律 + 读序 + 开发回路 + MCP 用法）。
 

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "microflow-container"
+version = "0.1.0"
+description = "MicroFlow business-container reference: durable execution + control-plane channels + delivery pump"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = ["microflow4python", "microflow-registry", "fastapi>=0.115", "uvicorn"]
+
+[project.scripts]
+microflow-container = "microflow_container.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
