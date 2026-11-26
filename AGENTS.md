@@ -43,5 +43,6 @@ capabilities 探测 → operators/schema 查契约 → scaffold 生成骨架（�
 ## 提交纪律
 
 - 一批工作一个 commit，message 说清楚"做什么 + 为什么"；测试绿了才提交。
-- 支撑平台三 SPA 的构建门禁：`tsc -b` + `vite build` 全绿；Kit/平台纯逻辑测试：`npm test`。
 - 框架测试门禁：`pytest MicroFlow4Python`（全绿）+ `flutter test`（基线覆盖不回退）。
+- 支撑侧（三 SPA / Kit / Host / Container / Registry / 部署壳）已于 2026-11-26 拆分至兄弟仓
+  `MicroFlowSupport`——其构建/测试门禁随迁，见支撑仓 AGENTS.md。
