@@ -172,6 +172,12 @@ stream.close()                                          # 停线程 + 最后一�
 `accept` 只做“分配序号 + 入有界队列”，不做任何 IO；队列满则**计数丢弃**（`dropped`），
 不阻塞、不抛错。落盘/上传/重试全在后台线程，失败只记账（`failed_flushes`）。
 
+**传输边界做 JSON 安全化**（`_jsonsafe`）：框架的 record/intent 以冻结结构
+（MappingProxyType）送达，canonical JSON 不接受它们——不转换的后果是 record 帧
+在摘要处被计为 invalid 丢弃、intent 帧因身份可信跳过校验在批摘要处才炸。边界归
+收集器，同数据不同壳，语义零变化；intent 载荷额外显式摘要校验（身份可信不等于
+载荷免检）。
+
 ## 四、验收标准（机器可判定）
 
 | # | 判据 | 证据 |
@@ -203,8 +209,29 @@ stream.close()                                          # 停线程 + 最后一�
 | A25 | `status` 也列出只有事件流的组（无报告时如实显示 assets=0） | `test_status_lists_stream_only_groups` |
 | A26 | `accept_intent` 身份原样保留：eventId 不重算、sequence 不重派、epoch→ISO | `test_accept_intent_preserves_identity_verbatim` |
 | A27 | 意图缺身份三要素只计数拒绝，不入队不抛错 | `test_intent_without_identity_is_counted_not_queued` |
+| A28 | 泵整页投递并逐条 ack；帧 kind=event_intent 身份保留 | `test_delivers_a_page_and_acks_every_intent` |
+| A29 | 冲刷失败保持 PENDING、绝不过 ack；宿主恢复后重投归零 | `test_flush_failure_keeps_intents_pending_and_never_over_acks` |
+| A30 | 坏意图计数不毒化整页；脏页不 ack | `test_invalid_intent_is_counted_and_does_not_poison_the_page` |
+| A31 | ack 失败计数、下轮重试（真账本收敛语义） | `test_ack_failure_is_counted_and_retried_next_tick` |
+| A32 | 后台泵循环消费并优雅关闭 | `test_background_loop_drains_and_closes` |
 
-运行：`cd MicroFlow4Registry && PYTHONPATH=../MicroFlow4Python/src python3 -m unittest discover -s tests -t .`（47 项）
+运行：`cd MicroFlow4Registry && PYTHONPATH=../MicroFlow4Python/src python3 -m unittest discover -s tests -t .`（52 项：含泵 A28–A32）
+
+### EventPump（投递泵，`microflow_registry/pump.py`）
+
+内核读面（`pending_events`/`acknowledge_event`）以回调注入，**不 import microflow**：
+
+```python
+pump = EventPump(pending=coordinator.pending_events,
+                 acknowledge=lambda intent: coordinator.acknowledge_event(
+                     intent["event_id"], intent["content_digest"],
+                     request_id=stable_request_id(intent)),
+                 stream=record_stream).start()
+```
+
+**保守 ack 规则**（宁可少 ack 不可多 ack）：整页意图全部接纳、冲刷后无新失败且
+outbox 归零才确认；任何疑点保持 PENDING，下一 tick 重投、宿主按 `event_id` 去重。
+ack 失败同样安全（意图留在账上，重投去重）。
 
 ## 五、边界声明
 

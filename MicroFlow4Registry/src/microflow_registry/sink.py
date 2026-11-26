@@ -12,9 +12,11 @@ and the counter is the only honest evidence of it.
 """
 import math
 import threading
+from collections import abc as _abc
 from collections import deque
 from datetime import datetime, timezone
 
+from .envelope import digest
 from .errors import RegistryError
 from .push import DEFAULT_TIMEOUT_SECONDS, send_batch
 from .stream import MAX_FRAMES, KIND_INTENT, KIND_RECORD, build_batch, build_frame, check_aggregate
@@ -29,6 +31,21 @@ def _iso_timestamp(value) -> str | None:
     if type(value) in (int, float) and math.isfinite(value) and value >= 0:
         return datetime.fromtimestamp(value, timezone.utc).isoformat(timespec="seconds")
     return None
+
+
+def _jsonsafe(value):
+    """传输边界：冻结映射/元组递归转普通 JSON 结构（同数据不同壳）。
+
+    框架的 record/intent 以冻结结构（MappingProxyType）送达；canonical JSON
+    不接受它们。不转换的后果是双重的：record 帧在 frame_id 摘要处被计为
+    invalid 丢弃，intent 帧因身份可信跳过校验、在批摘要处才炸。边界归
+    收集器，语义零变化。
+    """
+    if isinstance(value, _abc.Mapping):
+        return {key: _jsonsafe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonsafe(item) for item in value]
+    return value
 
 
 class RecordStream:
@@ -85,7 +102,7 @@ class RecordStream:
                 sequence = self._sequence.get(aggregate, 0) + 1
                 self._sequence[aggregate] = sequence
                 self._queue.append({"aggregateKey": aggregate, "sequence": sequence,
-                                    "payload": record, "kind": KIND_RECORD,
+                                    "payload": _jsonsafe(record), "kind": KIND_RECORD,
                                     "eventId": None, "occurredAt": None})
             self.accepted += 1
             return True
@@ -112,7 +129,10 @@ class RecordStream:
                 return False
             payload = {"event_type": intent.get("event_type") or intent.get("eventType") or "",
                        "schema_version": intent.get("schema_version") or "",
-                       "payload": intent.get("payload")}
+                       "payload": _jsonsafe(intent.get("payload"))}
+            # 身份可信的帧跳过 frame_id 摘要，所以这里显式校验载荷可规范化
+            # （NaN/非 JSON 结构在此计数拒绝，而不是在批摘要处炸掉整个 flush）。
+            digest(payload)
             occurred = intent.get("occurredAt")
             if not isinstance(occurred, str) or not occurred:
                 occurred = _iso_timestamp(intent.get("occurred_at"))
